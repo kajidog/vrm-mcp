@@ -1,0 +1,190 @@
+import type { TtsEngine, TtsEngineId } from './engines/types.js'
+
+/**
+ * TTSクライアントの設定オブジェクト
+ */
+export interface TtsConfig {
+  /** 使用するTTSエンジン */
+  engine?: TtsEngineId
+  /** エンジンのベースURL */
+  baseUrl?: string
+  /** 認証が必要なエンジンのAPIキー */
+  apiKey?: string
+  /** 初期化済みエンジン。指定時は engine/baseUrl/apiKey より優先 */
+  ttsEngine?: TtsEngine
+  /** デフォルトの話者ID */
+  defaultSpeaker: number
+  /** デフォルトの再生速度 */
+  defaultSpeedScale?: number
+  /** デフォルトの音量 (0.0 - 2.0, デフォルト: 1.0) */
+  defaultVolumeScale?: number
+  /** デフォルトの音高 (-0.15 - 0.15, デフォルト: 0.0) */
+  defaultPitchScale?: number
+  /** 音声の前の無音時間（秒） */
+  defaultPrePhonemeLength?: number
+  /** 音声の後の無音時間（秒） */
+  defaultPostPhonemeLength?: number
+  /** テキスト分割時の最大文字数（デフォルト: 150） */
+  maxSegmentLength?: number
+  /** デフォルトの再生オプション */
+  defaultPlaybackOptions?: PlaybackOptions
+}
+
+/**
+ * 音声合成用のクエリ
+ */
+export interface AudioQuery {
+  /** アクセント句のリスト */
+  accent_phrases: AccentPhrase[]
+  /** 全体の話速 */
+  speedScale: number
+  /** 全体の音高 */
+  pitchScale: number
+  /** 全体の抑揚 */
+  intonationScale: number
+  /** 全体の音量 */
+  volumeScale: number
+  /** 音声の前の無音時間 */
+  prePhonemeLength: number
+  /** 音声の後の無音時間 */
+  postPhonemeLength: number
+  /** 音声データの出力サンプリングレート */
+  outputSamplingRate: number
+  /** 音声データをステレオ出力するか否か */
+  outputStereo: boolean
+  /** AquesTalk風記法によるテキスト */
+  kana?: string
+  /** 句読点などの間の長さの倍率（VOICEVOX 0.14+） */
+  pauseLengthScale?: number
+}
+
+/**
+ * 文字列またはAudioQueryのいずれかを受け入れる型
+ */
+export type StringOrAudioQuery = string | AudioQuery
+
+/**
+ * アクセント句ごとの情報
+ */
+export interface AccentPhrase {
+  /** モーラのリスト */
+  moras: Mora[]
+  /** アクセント箇所 */
+  accent: number
+  /** 後ろに無音を付けるかどうか */
+  pause_mora?: Mora
+  /** 疑問形かどうか */
+  is_interrogative?: boolean
+}
+
+/**
+ * モーラ（子音＋母音）ごとの情報
+ */
+export interface Mora {
+  /** 文字 */
+  text: string
+  /** 子音の音素 */
+  consonant?: string
+  /** 子音の音長 */
+  consonant_length?: number
+  /** 母音の音素 */
+  vowel: string
+  /** 母音の音長 */
+  vowel_length: number
+  /** 音高 */
+  pitch: number
+}
+
+/**
+ * フレームごとの音声合成用のクエリ
+ */
+export interface FrameAudioQuery {
+  /** フレームごとの基本周波数 */
+  f0: number[]
+  /** フレームごとの音量 */
+  volume: number[]
+  /** 音素のリスト */
+  phonemes: FramePhoneme[]
+  /** 全体の音量 */
+  volumeScale: number
+  /** 音声データの出力サンプリングレート */
+  outputSamplingRate: number
+  /** 音声データをステレオ出力するか否か */
+  outputStereo: boolean
+}
+
+/**
+ * 音素の情報
+ */
+export interface FramePhoneme {
+  /** 音素 */
+  phoneme: string
+  /** 音素のフレーム長 */
+  frame_length: number
+  /** 音符のID */
+  note_id?: string | null
+}
+
+/**
+ * スピーカーの情報
+ */
+export interface Speaker {
+  name: string
+  speaker_uuid: string
+  styles: {
+    name: string
+    id: number
+    type: string
+  }[]
+  version: string
+  supported_features: {
+    permitted_synthesis_morphing: string
+  }
+}
+
+/**
+ * スピーカー詳細情報 (/speaker_info レスポンス)
+ */
+export interface SpeakerStyleInfo {
+  id: number
+  icon: string
+  portrait?: string
+  voice_samples: string[]
+}
+
+export interface SpeakerInfo {
+  policy: string
+  portrait: string
+  style_infos: SpeakerStyleInfo[]
+}
+
+/**
+ * ユーザー辞書単語
+ */
+export interface UserDictionaryWord {
+  surface: string
+  pronunciation: string
+  accent_type: number
+  word_type: string
+  priority: number
+}
+
+// VoicevoxError は error.ts から再エクスポートされるため削除
+
+// 音声セグメント定義
+export interface SpeechSegment {
+  text: string
+  speaker?: number
+}
+
+/**
+ * 音声再生のオプション
+ */
+export interface PlaybackOptions {
+  /** 即座に再生を開始するかどうか */
+  immediate?: boolean
+  /** 再生開始まで待機するかどうか */
+  waitForStart?: boolean
+  /** 再生終了まで待機するかどうか */
+  waitForEnd?: boolean
+}

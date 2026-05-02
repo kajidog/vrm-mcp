@@ -1,0 +1,57 @@
+{
+  "name": "@kajidog/tts-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "browser": {
+    "fs": false,
+    "path": false,
+    "os": false,
+    "child_process": false,
+    "process": false,
+    "node:fs": false,
+    "node:fs/promises": false,
+    "node:path": false,
+    "node:os": false,
+    "node:child_process": false,
+    "./dist/playback/node-playback-strategy.js": false
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "browser": "./dist/index.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsgo",
+    "build:tsc": "tsc",
+    "build:clean": "rm -rf dist && pnpm build",
+    "lint": "biome check . && tsc --noEmit",
+    "lint:fix": "biome check --write .",
+    "prepare": "pnpm build",
+    "prepublishOnly": "pnpm test"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^20.19.39",
+    "@typescript/native-preview": "7.0.0-dev.20250712.1",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.5.0"
+  },
+  "browserslist": ["> 1%", "last 2 versions", "not dead"]
+}

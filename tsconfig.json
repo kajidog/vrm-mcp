@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "include": [],
+  "references": [
+    { "path": "./apps/mcp-vrm" },
+    { "path": "./packages/mcp-core" },
+    { "path": "./packages/player-ui" },
+    { "path": "./packages/tts-client" }
+  ]
+}

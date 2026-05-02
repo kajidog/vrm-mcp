@@ -1,0 +1,73 @@
+{
+  "name": "@kajidog/voicevox-vrm-mcp",
+  "version": "0.1.0",
+  "description": "",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "voicevox-vrm-mcp": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "start:stdio": "node dist/stdio.js",
+    "start:http": "MCP_HTTP_MODE=true node dist/index.js",
+    "start:http:win": "powershell -Command \"$env:MCP_HTTP_MODE='true'; node dist/index.js\"",
+    "dev": "NODE_ENV=development tsx src/index.ts",
+    "dev:stdio": "NODE_ENV=development tsx src/stdio.ts",
+    "dev:http": "NODE_ENV=development MCP_HTTP_MODE=true tsx src/index.ts",
+    "dev:http:win": "powershell -Command \"$env:NODE_ENV='development'; $env:MCP_HTTP_MODE='true'; tsx src/index.ts\"",
+    "build": "tsup",
+    "build:tsc": "tsc",
+    "build:clean": "rm -rf dist && pnpm build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "prepare": "pnpm build",
+    "prepublishOnly": "pnpm test"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "keywords": ["mcp", "mcp-server", "mcp-apps", "voicevox"],
+  "author": {
+    "name": "kajidog",
+    "email": "dev@kajidog.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kajidog/voicevox-vrm-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kajidog/voicevox-vrm-mcp/issues"
+  },
+  "homepage": "https://github.com/kajidog/voicevox-vrm-mcp#readme",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@kajidog/tts-client": "workspace:*",
+    "@modelcontextprotocol/ext-apps": "^1.7.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@kajidog/mcp-core": "workspace:*",
+    "@kajidog/player-ui": "workspace:*",
+    "@types/node": "^20.19.39",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.5.0"
+  }
+}

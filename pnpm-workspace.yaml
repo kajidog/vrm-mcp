@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+  - apps/*
+
+ignoredBuiltDependencies:
+  - '@modelcontextprotocol/ext-apps'
+  - esbuild
+
+onlyBuiltDependencies:
+  - '@biomejs/biome'

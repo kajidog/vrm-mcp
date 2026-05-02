@@ -1,0 +1,73 @@
+import type { AccentPhrase, AudioQuery, Mora } from '@kajidog/tts-client'
+
+export type { Mora, AccentPhrase, AudioQuery }
+
+export interface EngineCapabilities {
+  audioQuery: boolean
+  directSpeech: boolean
+  accentPhrases: boolean
+  moraData: boolean
+  userDictionary: boolean
+  speakerInfo: boolean
+  speakerList: boolean
+}
+
+/** ツール結果から情報を抽出 */
+export interface PlayerData {
+  audioBase64: string
+  text: string
+  autoPlay: boolean
+  speaker: number
+  speakerName: string
+  kana?: string
+  speedScale?: number
+  audioQuery?: AudioQuery
+}
+
+export interface SpeakerInfo {
+  id: number
+  name: string
+  characterName: string
+  uuid: string
+}
+
+/** マルチスピーカー用セグメント */
+export interface AudioSegment {
+  audioBase64?: string // speak_player 非同期化により初期は未設定、_resynthesize_for_player で取得
+  text: string
+  speaker: number
+  speakerName?: string // speaker ID から導出可能なため省略可
+  kana?: string
+  audioQuery?: AudioQuery
+  accentPhrases?: AccentPhrase[]
+  speedScale?: number
+  intonationScale?: number
+  volumeScale?: number
+  prePhonemeLength?: number
+  postPhonemeLength?: number
+  pauseLengthScale?: number
+}
+
+/** マルチスピーカー用データ */
+export interface MultiPlayerData {
+  segments: AudioSegment[]
+  autoPlay: boolean
+  viewUUID?: string
+  engineId?: string
+  engineDisplayName?: string
+  capabilities?: EngineCapabilities
+}
+
+export interface DictionaryWord {
+  wordUuid: string
+  surface: string
+  pronunciation: string
+  accentType: number
+  notation: string
+  priority: number
+}
+
+export interface DictionaryData {
+  words: DictionaryWord[]
+  notice?: string
+}
