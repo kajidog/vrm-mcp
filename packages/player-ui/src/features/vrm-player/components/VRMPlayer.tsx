@@ -7,6 +7,9 @@ interface VRMPlayerProps {
   loadingModel: boolean
   onLocalFile: (file: File) => Promise<void>
   onModelError: (message: string) => void
+  // ヘッダ右の「メニュー」ボタン押下時に呼ばれる。VRM 一覧画面への遷移用。
+  // 渡されない場合はボタンを描画しない。
+  onOpenMenu?: () => void
 }
 
 /**
@@ -14,7 +17,7 @@ interface VRMPlayerProps {
  * 3D プレビュー（VRMCanvas）を並べ、外側 div で D&D を受ける。
  * source が null のときも Canvas は常に出すので「空の空間」が表示される。
  */
-export function VRMPlayer({ source, loadingModel, onLocalFile, onModelError }: VRMPlayerProps) {
+export function VRMPlayer({ source, loadingModel, onLocalFile, onModelError, onOpenMenu }: VRMPlayerProps) {
   const { isDragging, openFilePicker, dropHandlers, inputProps } = useVrmFileDrop({ onFile: onLocalFile })
 
   return (
@@ -41,6 +44,15 @@ export function VRMPlayer({ source, loadingModel, onLocalFile, onModelError }: V
           >
             file
           </button>
+          {onOpenMenu ? (
+            <button
+              type="button"
+              className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)]"
+              onClick={onOpenMenu}
+            >
+              メニュー
+            </button>
+          ) : null}
         </div>
       </div>
 

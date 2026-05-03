@@ -29,12 +29,15 @@ export interface VrmPayload {
 }
 
 // useVrmPlayerApp が公開するビュー向け状態と操作。
+// `app` はサーバー向けツール呼び出しが必要な兄弟ビュー（VRM 一覧画面など）に
+// 共有するためのハンドル。確立前は null。
 export interface VrmPlayerState {
   status: VrmPlayerStatus
   errorMsg: string
   source: VrmSource | null
   loadingModel: boolean
   isReadyForDisplay: boolean
+  app: import('@modelcontextprotocol/ext-apps').App | null
   loadLocalVrmFile: (file: File) => Promise<void>
   setModelError: (message: string) => void
 }

@@ -50,8 +50,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setErrorMsg('')
   }
 
-  // サーバの `_get_default_vrm_for_player` を叩いてフォールバック表示を試みる。
-  // - デフォルトが未設定 → 空表示
+  // サーバの `_resolve_default_vrm_for_player` を叩いてフォールバック表示を試みる。
+  // - デフォルトが未設定（source: 'none'）→ 空表示
   // - デフォルトはあるが解決失敗 → エラー表示（reason をメッセージに含める）
   const applyDefaultPayload = async (reason: string): Promise<void> => {
     const currentApp = appRef.current
@@ -177,6 +177,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     source,
     loadingModel,
     isReadyForDisplay: Boolean(app),
+    app: app ?? null,
     // ユーザーがローカル VRM をドロップ/選択したときの取り込み処理。
     loadLocalVrmFile: async (file: File) => {
       const fileName = file.name || 'local VRM'
