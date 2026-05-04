@@ -1,6 +1,7 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '../poses/presets'
 import { VRMCanvas } from '../vrm-player/components/VRMCanvas'
 import { useVrmFileDrop } from '../vrm-player/hooks/useVrmFileDrop'
 import type { VrmSource } from '../vrm-player/types'
@@ -179,6 +180,8 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
   const [saveError, setSaveError] = useState<string | null>(null)
   const [testingLabel, setTestingLabel] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
+  // プレビュー時の確認用ポーズ。保存する値ではないので form 外に持つ。
+  const [previewPose, setPreviewPose] = useState<PosePresetId>(DEFAULT_POSE_ID)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlRef = useRef<string | null>(null)
 
@@ -437,7 +440,26 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
         </div>
         {previewError ? <div className="text-xs text-red-600">{previewError}</div> : null}
         {previewSource ? (
-          <VRMCanvas source={previewSource} onError={setPreviewError} />
+          <>
+            <VRMCanvas source={previewSource} onError={setPreviewError} pose={previewPose} />
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+              <span className="font-semibold text-[var(--ui-text)]">ポーズ確認</span>
+              <select
+                value={previewPose}
+                onChange={(e) => setPreviewPose(e.target.value as PosePresetId)}
+                className="min-w-[8rem] rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
+              >
+                {Object.entries(POSE_PRESETS).map(([id, preset]) => (
+                  <option key={id} value={id}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-[var(--ui-text-secondary)]">
+                プリセット動作確認用。保存はされません。
+              </span>
+            </div>
+          </>
         ) : isEdit ? (
           <div className="rounded-md border border-dashed border-[var(--ui-border)] p-4 text-center text-xs text-[var(--ui-text-secondary)]">
             既存 VRM のプレビューURLを取得しています。

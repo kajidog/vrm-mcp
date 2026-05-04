@@ -2,19 +2,29 @@ import { type VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useRef, useState } from 'react'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '../../poses/presets'
 import type { VrmSource } from '../types'
 
 interface VRMSceneProps {
   source: VrmSource
   onError: (message: string) => void
+  // 指定されたプリセット（idle, wave 等）を毎フレーム適用する。未指定時は idle（呼吸）。
+  pose?: PosePresetId
 }
 
 /**
  * 渡された VrmSource を three.js シーンに常駐表示するコンポーネント。
  * `source.data`（バイナリ）か `source.src`（URL）のいずれかからロードする。
  */
-export function VRMScene({ source, onError }: VRMSceneProps) {
+export function VRMScene({ source, onError, pose }: VRMSceneProps) {
   const [vrm, setVrm] = useState<VRM | null>(null)
+  // 経過時間（idle の呼吸など、時刻ベースの揺らぎに使う）。useFrame の delta を加算する。
+  const elapsedRef = useRef(0)
+  // pose は ref に写してから useFrame で参照する（レンダ越しに最新値を拾うため）。
+  const poseRef = useRef<PosePresetId>(pose ?? DEFAULT_POSE_ID)
+  useEffect(() => {
+    poseRef.current = pose ?? DEFAULT_POSE_ID
+  }, [pose])
 
   // onError を ref 経由で参照し、コールバック差し替えで useEffect が再実行されないようにする。
   const onErrorRef = useRef(onError)
@@ -116,8 +126,13 @@ export function VRMScene({ source, onError }: VRMSceneProps) {
   }, [source.data, source.src])
 
   // 毎フレーム delta を渡して spring bone / 表情 / lookAt をシミュレーションする。
+  // ポーズはヒューマノイドの正規化ボーン回転を上書きするので、vrm.update() の前に
+  // 適用してから update でラインを正規化→生ボーンに反映させる（これで spring と競合しない）。
   useFrame((_, delta) => {
     if (!vrm) return
+    elapsedRef.current += delta
+    const preset = POSE_PRESETS[poseRef.current]
+    preset?.applyToVrm(vrm, elapsedRef.current)
     vrm.update(delta)
   })
 
