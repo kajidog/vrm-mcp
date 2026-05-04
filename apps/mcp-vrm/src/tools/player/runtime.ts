@@ -4,6 +4,7 @@ import type { ToolDeps } from '../types.js'
 import { VrmRegistryStore } from '../vrm-registry/store.js'
 import { AudioCacheStore, createAudioCacheKey } from './audio-cache.js'
 import { getPlayerDictionaryRevision } from './dictionary-revision.js'
+import { PlayerSettingsStore } from './player-settings-store.js'
 import type { PlayerSessionState } from './session-state.js'
 import { SessionStateStore } from './session-state.js'
 
@@ -15,7 +16,7 @@ type SynthesizeInput = {
   text: string
   speaker: number
   audioQuery?: AudioQuery
-  speedScale: number
+  speedScale?: number
   intonationScale?: number
   volumeScale?: number
   prePhonemeLength?: number
@@ -53,6 +54,7 @@ export interface PlayerRuntime {
   getSessionState: (viewUUID: string | undefined, sessionId: string | undefined) => PlayerSessionState | undefined
   getSessionStateByKey: (key: string) => PlayerSessionState | undefined
   vrmRegistry: VrmRegistryStore
+  playerSettings: PlayerSettingsStore
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +64,7 @@ export interface PlayerRuntime {
 let audioCacheStore: AudioCacheStore | null = null
 let sessionStateStore: SessionStateStore | null = null
 let vrmRegistryStore: VrmRegistryStore | null = null
+let playerSettingsStore: PlayerSettingsStore | null = null
 let speakerCache: SpeakerEntry[] | null = null
 
 export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
@@ -77,10 +80,14 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
   if (!vrmRegistryStore) {
     vrmRegistryStore = new VrmRegistryStore({ cacheDir: audioCacheStore.getDir() })
   }
+  if (!playerSettingsStore) {
+    playerSettingsStore = new PlayerSettingsStore(config)
+  }
 
   const cache = audioCacheStore
   const sessionState = sessionStateStore
   const vrmRegistry = vrmRegistryStore
+  const playerSettings = playerSettingsStore
   const playerEngine = engine
 
   const getSpeakerList = async () => {
@@ -126,18 +133,19 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
     }))
   }
 
-  const synthesizeWithCache = async ({
-    text,
-    speaker,
-    audioQuery,
-    speedScale,
-    intonationScale,
-    volumeScale,
-    prePhonemeLength,
-    postPhonemeLength,
-    pauseLengthScale,
-    accentPhrases,
-  }: SynthesizeInput): Promise<SynthesizeResult> => {
+  const synthesizeWithCache = async (input: SynthesizeInput): Promise<SynthesizeResult> => {
+    const {
+      text,
+      speaker,
+      audioQuery,
+      speedScale,
+      intonationScale,
+      volumeScale,
+      prePhonemeLength,
+      postPhonemeLength,
+      pauseLengthScale,
+      accentPhrases,
+    } = playerSettings.applyDefaults(input)
     const speakerName = await getSpeakerName(speaker)
 
     // アクセント編集時は /mora_data でピッチ再計算してからキャッシュキーを作る。
@@ -252,5 +260,6 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
     getSessionState: (viewUUID, sessionId) => sessionState.get(viewUUID, sessionId),
     getSessionStateByKey: (key) => sessionState.getByKey(key),
     vrmRegistry,
+    playerSettings,
   }
 }

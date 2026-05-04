@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { VRMPlayer } from './features/vrm-player/components/VRMPlayer'
+import { useDisplayMode } from './features/vrm-player/hooks/useDisplayMode'
 import { useVrmPlayerApp } from './features/vrm-player/hooks/useVrmPlayerApp'
 import { VrmListView } from './features/vrm-registry/VrmListView'
 import { VrmRegisterView } from './features/vrm-registry/VrmRegisterView'
@@ -27,7 +28,11 @@ function ErrorView({ message }: { message: string }) {
 export function McpApp() {
   const [view, setView] = useState<View>('player')
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [listRefreshKey, setListRefreshKey] = useState(0)
   const player = useVrmPlayerApp()
+  const displayMode = useDisplayMode(player.app)
+  const fullscreen = displayMode.displayMode === 'fullscreen'
 
   if (player.status === 'connecting') {
     return <LoadingView label="Connecting..." />
@@ -64,6 +69,7 @@ export function McpApp() {
         onBack={() => setView('list')}
         onSaved={() => {
           setEditingModelId(null)
+          setListRefreshKey((value) => value + 1)
           setView('list')
         }}
       />
@@ -75,16 +81,46 @@ export function McpApp() {
   }
 
   return (
-    <VRMPlayer
-      app={player.app}
-      source={player.source}
-      loadingModel={player.loadingModel}
-      pose={player.pose}
-      speechText={player.currentSegmentText}
-      activeModelId={player.activeModel?.id ?? null}
-      onSwitchVrm={player.switchVrm}
-      onModelError={player.setModelError}
-      onOpenMenu={() => setView('list')}
-    />
+    <div data-display-mode={displayMode.displayMode}>
+      <VRMPlayer
+        app={player.app}
+        source={player.source}
+        loadingModel={player.loadingModel}
+        pose={player.pose}
+        speechText={player.currentSegmentText}
+        activeModelId={player.activeModel?.id ?? null}
+        listRefreshKey={listRefreshKey}
+        isPlaying={player.isPlaying}
+        canReplay={player.canReplay}
+        settingsOpen={settingsOpen}
+        fullscreen={fullscreen}
+        canFullscreen={displayMode.canFullscreen}
+        onSwitchVrm={player.switchVrm}
+        onPlay={player.play}
+        onPause={player.pause}
+        onPrev={player.prev}
+        onNext={player.next}
+        onModelError={player.setModelError}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onCloseSettings={() => setSettingsOpen(false)}
+        onSettingsApplied={player.resynthesizeAll}
+        onAddModel={() => {
+          setEditingModelId(null)
+          setView('register')
+        }}
+        onEditModel={(modelId) => {
+          setEditingModelId(modelId)
+          setView('edit')
+        }}
+        onOpenModels={() => {
+          setSettingsOpen(false)
+          setView('list')
+        }}
+        onToggleFullscreen={() => {
+          if (fullscreen) void displayMode.requestInline()
+          else void displayMode.requestFullscreen()
+        }}
+      />
+    </div>
   )
 }

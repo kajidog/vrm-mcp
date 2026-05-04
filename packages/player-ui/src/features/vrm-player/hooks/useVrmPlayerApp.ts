@@ -73,10 +73,16 @@ export function useVrmPlayerApp(): VrmPlayerState {
   const [segments, setSegments] = useState<PoseSegment[]>([])
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState<number | null>(null)
   const [activeModel, setActiveModel] = useState<{ id: string; name: string; speakerId: number } | null>(null)
+  const [paused, setPaused] = useState(false)
   const appRef = useRef<App | null>(null)
   // `setModelError` から「現在表示中のソース種別」を同期参照するための ref。
   const sourceRef = useRef<VrmPlayerState['source']>(null)
   const poseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const poseTimerStartedAtRef = useRef<number | null>(null)
+  const poseTimerDurationRef = useRef<number | null>(null)
+  const poseTimerRemainingRef = useRef<number | null>(null)
+  const poseTimerIndexRef = useRef<number | null>(null)
+  const poseTimerVersionRef = useRef<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlRef = useRef<string | null>(null)
   // 再生中のセグメント列へ同期参照。switchVrm が完了したあと「直近のセグメント列」で
@@ -94,6 +100,10 @@ export function useVrmPlayerApp(): VrmPlayerState {
       clearTimeout(poseTimerRef.current)
       poseTimerRef.current = null
     }
+    poseTimerStartedAtRef.current = null
+    poseTimerDurationRef.current = null
+    poseTimerIndexRef.current = null
+    poseTimerVersionRef.current = null
   }
 
   const releaseAudioUrl = () => {
@@ -106,6 +116,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
   // 再生を完全に止める。新しい segment 列に差し替える前と unmount で必ず呼ぶ。
   const stopPlayback = () => {
     clearPoseTimer()
+    poseTimerRemainingRef.current = null
+    setPaused(false)
     const audio = audioRef.current
     if (audio) {
       audio.onended = null
@@ -121,9 +133,26 @@ export function useVrmPlayerApp(): VrmPlayerState {
     releaseAudioUrl()
   }
 
+  const schedulePoseTimer = (index: number, version: number, duration: number) => {
+    clearPoseTimer()
+    poseTimerStartedAtRef.current = Date.now()
+    poseTimerDurationRef.current = duration
+    poseTimerIndexRef.current = index
+    poseTimerVersionRef.current = version
+    poseTimerRemainingRef.current = null
+    poseTimerRef.current = setTimeout(() => {
+      if (version !== playbackVersionRef.current) return
+      clearPoseTimer()
+      playSegmentAt(index + 1, version)
+    }, duration)
+  }
+
   // 1 セグメントを実際に再生する。audioBase64 が無いセグメントは推定時間でスキップする。
   const playSegmentAt = (index: number, version: number): void => {
     if (version !== playbackVersionRef.current) return
+    clearPoseTimer()
+    poseTimerRemainingRef.current = null
+    setPaused(false)
     const list = segmentsRef.current
     const current = list[index]
     if (!current) {
@@ -151,26 +180,14 @@ export function useVrmPlayerApp(): VrmPlayerState {
       audio.onerror = () => {
         if (version !== playbackVersionRef.current) return
         // 再生失敗したら推定時間で次に進む。
-        const duration = estimateSegmentDurationMs(current)
-        poseTimerRef.current = setTimeout(() => {
-          if (version !== playbackVersionRef.current) return
-          playSegmentAt(index + 1, version)
-        }, duration)
+        schedulePoseTimer(index, version, estimateSegmentDurationMs(current))
       }
       void audio.play().catch(() => {
         if (version !== playbackVersionRef.current) return
-        const duration = estimateSegmentDurationMs(current)
-        poseTimerRef.current = setTimeout(() => {
-          if (version !== playbackVersionRef.current) return
-          playSegmentAt(index + 1, version)
-        }, duration)
+        schedulePoseTimer(index, version, estimateSegmentDurationMs(current))
       })
     } else {
-      const duration = estimateSegmentDurationMs(current)
-      poseTimerRef.current = setTimeout(() => {
-        if (version !== playbackVersionRef.current) return
-        playSegmentAt(index + 1, version)
-      }, duration)
+      schedulePoseTimer(index, version, estimateSegmentDurationMs(current))
     }
   }
 
@@ -187,6 +204,83 @@ export function useVrmPlayerApp(): VrmPlayerState {
       return
     }
     playSegmentAt(0, playbackVersionRef.current)
+  }
+
+  const play = () => {
+    const list = segmentsRef.current
+    if (list.length === 0) return
+
+    if (paused) {
+      setPaused(false)
+      const audio = audioRef.current
+      if (audio?.src && audio.paused && currentSegmentIndex !== null && poseTimerRemainingRef.current === null) {
+        void audio.play().catch(() => {
+          schedulePoseTimer(
+            currentSegmentIndex,
+            playbackVersionRef.current,
+            estimateSegmentDurationMs(list[currentSegmentIndex])
+          )
+        })
+        return
+      }
+
+      if (
+        poseTimerRemainingRef.current !== null &&
+        poseTimerIndexRef.current !== null &&
+        poseTimerVersionRef.current === playbackVersionRef.current
+      ) {
+        schedulePoseTimer(poseTimerIndexRef.current, playbackVersionRef.current, poseTimerRemainingRef.current)
+        return
+      }
+    }
+
+    if (currentSegmentIndex === null) {
+      startPlayback(list)
+    }
+  }
+
+  const pause = () => {
+    if (currentSegmentIndex === null || paused) return
+    const audio = audioRef.current
+    if (audio?.src && !audio.paused) {
+      audio.pause()
+      setPaused(true)
+      return
+    }
+
+    if (
+      poseTimerRef.current !== null &&
+      poseTimerStartedAtRef.current !== null &&
+      poseTimerDurationRef.current !== null
+    ) {
+      const elapsed = Date.now() - poseTimerStartedAtRef.current
+      poseTimerRemainingRef.current = Math.max(0, poseTimerDurationRef.current - elapsed)
+      clearTimeout(poseTimerRef.current)
+      poseTimerRef.current = null
+      poseTimerStartedAtRef.current = null
+      poseTimerDurationRef.current = null
+      setPaused(true)
+    }
+  }
+
+  const jumpTo = (index: number) => {
+    const list = segmentsRef.current
+    if (list.length === 0) return
+    stopPlayback()
+    playbackVersionRef.current += 1
+    segmentsRef.current = list
+    setSegments(list)
+    playSegmentAt(Math.min(Math.max(index, 0), list.length - 1), playbackVersionRef.current)
+  }
+
+  const prev = () => {
+    const current = currentSegmentIndex ?? playbackIndexRef.current
+    jumpTo(current - 1)
+  }
+
+  const next = () => {
+    const current = currentSegmentIndex ?? -1
+    jumpTo(current + 1)
   }
 
   // <audio> 要素は React の制御外で使う（ライフサイクルだけ管理）。
@@ -285,7 +379,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
   const { app, error: appError } = useApp({
     appInfo: { name: 'VRM Player', version: '1.0.0' },
-    capabilities: {},
+    capabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
     onAppCreated: (createdApp: App) => {
       appRef.current = createdApp
 
@@ -364,6 +458,49 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setErrorMsg(`Connection error: ${appError.message}`)
   }, [appError])
 
+  const resynthesizeSegments = async (
+    currentApp: App,
+    speakerId: number,
+    list: PoseSegment[]
+  ): Promise<PoseSegment[]> => {
+    return Promise.all(
+      list.map(async (segment) => {
+        try {
+          const result = await resynthesizeSegmentOnServer(currentApp, {
+            speakerId,
+            text: segment.text,
+            speedScale: segment.explicitSpeedScale,
+          })
+          return {
+            ...segment,
+            audioBase64: result.audioBase64,
+            speaker: speakerId,
+            speedScale: result.speedScale ?? segment.speedScale,
+            prePhonemeLength: result.prePhonemeLength,
+            postPhonemeLength: result.postPhonemeLength,
+          }
+        } catch (e) {
+          console.warn('[resynthesizeSegments] resynthesize failed:', e)
+          return { ...segment, audioBase64: undefined, speaker: speakerId }
+        }
+      })
+    )
+  }
+
+  const resynthesizeAll = async (): Promise<void> => {
+    const currentApp = appRef.current
+    const model = activeModel
+    const existing = segmentsRef.current
+    if (!currentApp || !model || existing.length === 0) return
+
+    setLoadingModel(true)
+    try {
+      startPlayback(await resynthesizeSegments(currentApp, model.speakerId, existing))
+    } finally {
+      setLoadingModel(false)
+    }
+  }
+
   // 登録済みモデルへ表示を切り替え、現在のセグメントを新 speaker で再合成して再生し直す。
   // - 表示中の VRM 自体は vrmUrl 経由で差し替える（ローカルパスは iframe で読めない）
   // - 既に segments があれば全件並列で再合成
@@ -395,22 +532,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
       const existing = segmentsRef.current
       if (existing.length > 0) {
-        const resynthesized = await Promise.all(
-          existing.map(async (segment) => {
-            try {
-              const { audioBase64 } = await resynthesizeSegmentOnServer(currentApp, {
-                speakerId: metadata.speakerId,
-                text: segment.text,
-                speedScale: segment.speedScale,
-              })
-              return { ...segment, audioBase64, speaker: metadata.speakerId }
-            } catch (e) {
-              console.warn('[switchVrm] resynthesize failed:', e)
-              return { ...segment, audioBase64: undefined, speaker: metadata.speakerId }
-            }
-          })
-        )
-        startPlayback(resynthesized)
+        startPlayback(await resynthesizeSegments(currentApp, metadata.speakerId, existing))
       }
     } catch (e) {
       setStatus('error')
@@ -430,9 +552,16 @@ export function useVrmPlayerApp(): VrmPlayerState {
     currentSegmentIndex,
     currentSegmentText: currentSegmentIndex !== null ? (segments[currentSegmentIndex]?.text ?? null) : null,
     activeModel,
+    isPlaying: currentSegmentIndex !== null && !paused,
+    canReplay: currentSegmentIndex === null && segments.length > 0,
     isReadyForDisplay: Boolean(app),
     app: app ?? null,
     switchVrm,
+    play,
+    pause,
+    prev,
+    next,
+    resynthesizeAll,
     // `<VRMScene>` 内のロードエラー通知。
     // 既に default 表示中なら再フォールバックせずエラー表示に切り替える
     // （無限フォールバックを防ぐため）。

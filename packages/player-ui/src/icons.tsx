@@ -125,3 +125,48 @@ export function DragHandleIcon() {
     </svg>
   )
 }
+
+export function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-label="Settings" className="h-5 w-5 fill-current">
+      <title>Settings</title>
+      <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65-2-3.46-2.49 1a7.3 7.3 0 0 0-1.69-.98L15 3h-4l-.36 2.93c-.6.23-1.17.56-1.69.98l-2.49-1-2 3.46 2.11 1.65c-.05.32-.07.65-.07.98s.02.66.07.98l-2.11 1.65 2 3.46 2.49-1c.52.4 1.08.73 1.69.98L11 21h4l.36-2.93c.61-.24 1.17-.57 1.69-.98l2.49 1 2-3.46-2.11-1.65zM13 15.5A3.5 3.5 0 1 1 13 8a3.5 3.5 0 0 1 0 7.5z" />
+    </svg>
+  )
+}
+
+export function FullscreenIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-label="Fullscreen" className="h-5 w-5 fill-current">
+      <title>Fullscreen</title>
+      <path d="M5 5h6v2H7v4H5V5zm12 2h-4V5h6v6h-2V7zM7 13v4h4v2H5v-6h2zm12 0v6h-6v-2h4v-4h2z" />
+    </svg>
+  )
+}
+
+export function FullscreenExitIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-label="Exit fullscreen" className="h-5 w-5 fill-current">
+      <title>Exit fullscreen</title>
+      <path d="M9 9H5V7h2V5h2v4zm10-2v2h-4V5h2v2h2zM7 17H5v-2h4v4H7v-2zm10 0v2h-2v-4h4v2h-2z" />
+    </svg>
+  )
+}
+
+export function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-label="Edit" className="h-4 w-4 fill-current">
+      <title>Edit</title>
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+    </svg>
+  )
+}
+
+export function PlusCircleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-label="Add" className="h-5 w-5 fill-current">
+      <title>Add</title>
+      <path d="M12 2a10 10 0 1 0 .01 0H12zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" />
+    </svg>
+  )
+}

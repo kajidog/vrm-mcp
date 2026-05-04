@@ -64,6 +64,22 @@ const ttsConfigDefs: ConfigDefs = {
     default: 1.0,
     valueName: '<scale>',
   },
+  defaultPrePhonemeLength: {
+    cli: '--pre-phoneme',
+    env: 'TTS_PRE_PHONEME_LENGTH',
+    description: 'Default pre-phoneme silence length for UI player synthesis',
+    group: 'TTS Configuration',
+    type: 'number',
+    valueName: '<seconds>',
+  },
+  defaultPostPhonemeLength: {
+    cli: '--post-phoneme',
+    env: 'TTS_POST_PHONEME_LENGTH',
+    description: 'Default post-phoneme silence length for UI player synthesis',
+    group: 'TTS Configuration',
+    type: 'number',
+    valueName: '<seconds>',
+  },
   defaultImmediate: {
     cli: '--immediate',
     env: 'TTS_DEFAULT_IMMEDIATE',
@@ -246,6 +262,8 @@ export interface ServerConfig extends BaseServerConfig {
   engineApiKey?: string
   defaultSpeaker: number
   defaultSpeedScale: number
+  defaultPrePhonemeLength?: number
+  defaultPostPhonemeLength?: number
   defaultWaitForStart: boolean
   defaultWaitForEnd: boolean
   restrictImmediate: boolean

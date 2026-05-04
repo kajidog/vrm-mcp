@@ -98,6 +98,9 @@ export interface PoseSegment {
   pose?: string
   text: string
   speedScale?: number
+  explicitSpeedScale?: number
+  prePhonemeLength?: number
+  postPhonemeLength?: number
   audioBase64?: string
   speaker?: number
 }
@@ -115,6 +118,9 @@ function pickPoseSegments(source: unknown): PoseSegment[] | null {
       text,
       pose: readString(segment, 'pose'),
       speedScale: typeof segment.speedScale === 'number' ? segment.speedScale : undefined,
+      explicitSpeedScale: typeof segment.explicitSpeedScale === 'number' ? segment.explicitSpeedScale : undefined,
+      prePhonemeLength: typeof segment.prePhonemeLength === 'number' ? segment.prePhonemeLength : undefined,
+      postPhonemeLength: typeof segment.postPhonemeLength === 'number' ? segment.postPhonemeLength : undefined,
       audioBase64: readString(segment, 'audioBase64'),
       speaker: typeof segment.speaker === 'number' ? segment.speaker : undefined,
     })

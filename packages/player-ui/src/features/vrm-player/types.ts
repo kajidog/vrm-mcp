@@ -51,5 +51,16 @@ export interface VrmPlayerState {
   activeModel: { id: string; name: string; speakerId: number } | null
   // 表示モデルを別の登録モデルへ切替し、必要なら現セグメントを新 speaker で再合成する。
   switchVrm: (modelId: string) => Promise<void>
+  play: () => void
+  pause: () => void
+  prev: () => void
+  next: () => void
+  isPlaying: boolean
+  canReplay: boolean
+  resynthesizeAll: (settings?: {
+    speedScale?: number
+    prePhonemeLength?: number
+    postPhonemeLength?: number
+  }) => Promise<void>
   setModelError: (message: string) => void
 }

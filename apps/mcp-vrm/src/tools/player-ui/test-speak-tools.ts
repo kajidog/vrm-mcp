@@ -15,7 +15,7 @@ const DEFAULT_TEST_TEXT = 'こんにちは、これはテスト音声です。'
  */
 export function registerTestSpeakTools(context: PlayerUIToolContext): void {
   const { deps, shared } = context
-  const { server, disabledTools, config } = deps
+  const { server, disabledTools } = deps
   const { playerResourceUri, synthesizeWithCache } = shared
 
   registerAppToolIfEnabled(
@@ -40,7 +40,6 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
         const result = await synthesizeWithCache({
           text: finalText,
           speaker: speakerId,
-          speedScale: config.defaultSpeedScale,
         })
         return {
           content: [
@@ -75,6 +74,8 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
         speakerId: z.number().describe('Speaker ID to use for synthesis'),
         text: z.string().min(1).describe('Text to synthesize'),
         speedScale: z.number().optional().describe('Playback speed scale (defaults to server default)'),
+        prePhonemeLength: z.number().optional().describe('Pre-phoneme silence length'),
+        postPhonemeLength: z.number().optional().describe('Post-phoneme silence length'),
       },
       _meta: {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
@@ -84,16 +85,22 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
       speakerId,
       text,
       speedScale,
+      prePhonemeLength,
+      postPhonemeLength,
     }: {
       speakerId: number
       text: string
       speedScale?: number
+      prePhonemeLength?: number
+      postPhonemeLength?: number
     }): Promise<CallToolResult> => {
       try {
         const result = await synthesizeWithCache({
           text,
           speaker: speakerId,
-          speedScale: speedScale ?? config.defaultSpeedScale,
+          speedScale,
+          prePhonemeLength,
+          postPhonemeLength,
         })
         return {
           content: [
@@ -105,6 +112,9 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
                 text,
                 speakerId,
                 speakerName: result.speakerName,
+                speedScale: result.speedScale,
+                prePhonemeLength: result.prePhonemeLength,
+                postPhonemeLength: result.postPhonemeLength,
               }),
             },
           ],

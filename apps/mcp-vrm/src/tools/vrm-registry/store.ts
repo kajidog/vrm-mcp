@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { extractVrmThumbnail } from './thumbnail.js'
 import type { VrmModel } from './types.js'
 
 const REGISTRY_FILE_NAME = 'vrm-registry.json'
@@ -79,6 +80,7 @@ export class VrmRegistryStore {
     const buffer = decodeAndValidateVrmBase64(input.vrmBase64)
 
     await this.writeBinaryAtomic(vrmFilePath, buffer)
+    const thumbnail = extractVrmThumbnail(buffer)
 
     const now = Date.now()
     const model: VrmModel = {
@@ -89,6 +91,9 @@ export class VrmRegistryStore {
       isPublic: input.isPublic === true,
       vrmFilePath,
       vrmSizeBytes: buffer.byteLength,
+      ...(thumbnail
+        ? { thumbnailBase64: thumbnail.thumbnailBase64, thumbnailMimeType: thumbnail.thumbnailMimeType }
+        : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -128,10 +133,13 @@ export class VrmRegistryStore {
 
     const buffer = decodeAndValidateVrmBase64(vrmBase64)
     await this.writeBinaryAtomic(existing.vrmFilePath, buffer)
+    const thumbnail = extractVrmThumbnail(buffer)
 
     const next: VrmModel = {
       ...existing,
       vrmSizeBytes: buffer.byteLength,
+      thumbnailBase64: thumbnail?.thumbnailBase64,
+      thumbnailMimeType: thumbnail?.thumbnailMimeType,
       updatedAt: Date.now(),
     }
     this.registry.set(id, next)

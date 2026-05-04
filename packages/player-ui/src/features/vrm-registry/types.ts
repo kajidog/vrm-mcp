@@ -12,6 +12,8 @@ export interface VrmMetadata {
   isDefault: boolean
   isPublic: boolean
   vrmSizeBytes: number
+  thumbnailBase64?: string
+  thumbnailMimeType?: string
   createdAt: number
   updatedAt: number
 }

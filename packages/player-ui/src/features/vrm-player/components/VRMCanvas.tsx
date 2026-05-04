@@ -3,6 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { type ComponentRef, useEffect, useRef, useState } from 'react'
 import { Vector3 } from 'three'
 import type { PosePresetId } from '../../poses/presets'
+import { useColorScheme } from '../hooks/useColorScheme'
 import type { VrmSource } from '../types'
 import { VRMScene } from './VRMScene'
 
@@ -17,7 +18,13 @@ interface VRMCanvasProps {
   pose?: PosePresetId
   // 吹き出しに出すテキスト。null のときは吹き出しを描画しない。
   speechText: string | null
+  fullscreen?: boolean
 }
+
+const SCENE_COLORS = {
+  light: { canvasBg: '#f3f4f6', gridA: '#d4d4d8', gridB: '#e4e4e7' },
+  dark: { canvasBg: '#1c1c1e', gridA: '#2c2c2e', gridB: '#38383a' },
+} as const
 
 /**
  * 左右ボタン同時押し中だけパン（target 平行移動）するハンドラを仕込む。
@@ -156,14 +163,20 @@ function CenterController({
  * three.js のキャンバスとシーン構成（背景・ライト・グリッド・カメラ操作）を担当。
  * モデルそのものの読み込みは `VRMScene` 側に委譲する。
  */
-export function VRMCanvas({ source, onError, pose, speechText }: VRMCanvasProps) {
+export function VRMCanvas({ source, onError, pose, speechText, fullscreen = false }: VRMCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const colorScheme = useColorScheme()
+  const colors = SCENE_COLORS[colorScheme]
   // VRMScene からセンタリング情報（上半身 y）を受け取って、カメラ追従と吹き出し位置に流す。
   const [centerY, setCenterY] = useState<number | null>(null)
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[var(--ui-border)] bg-[var(--ui-surface)]">
-      <div className="h-[420px] w-full">
+    <div
+      className={`vrm-canvas-host overflow-hidden border border-[var(--ui-border)] bg-[var(--ui-surface)] ${
+        fullscreen ? 'h-full min-h-0 rounded-none' : 'rounded-lg'
+      }`}
+    >
+      <div className={fullscreen ? 'h-full min-h-0 w-full' : 'h-[420px] w-full'}>
         <Canvas
           camera={{ position: [0, 1.35, 2.2], fov: 28 }}
           // 高 DPI 端末でも上限を 1.5 にして描画コストを抑える。
@@ -173,11 +186,11 @@ export function VRMCanvas({ source, onError, pose, speechText }: VRMCanvasProps)
             powerPreference: 'high-performance',
           }}
         >
-          <color attach="background" args={['#f3f4f6']} />
+          <color attach="background" args={[colors.canvasBg]} />
           <ambientLight intensity={1.2} />
           <directionalLight position={[1.5, 2.5, 2]} intensity={1.5} />
           <directionalLight position={[-1, 1.5, -1]} intensity={0.5} />
-          <gridHelper args={[6, 12, '#d4d4d8', '#e4e4e7']} position={[0, -1, 0]} />
+          <gridHelper args={[6, 12, colors.gridA, colors.gridB]} position={[0, -1, 0]} />
           {source ? <VRMScene source={source} onError={onError} pose={pose} onCenterReady={setCenterY} /> : null}
           {/* 仮置き target。ロード完了後に CenterController が VRM の上半身高さに更新する。 */}
           <OrbitControls ref={controlsRef} enablePan={false} target={[0, 1.1, 0]} />
@@ -185,9 +198,6 @@ export function VRMCanvas({ source, onError, pose, speechText }: VRMCanvasProps)
           <CenterController controlsRef={controlsRef} centerY={centerY} />
           {speechText ? <SpeechBubble3D centerY={centerY} text={speechText} /> : null}
         </Canvas>
-      </div>
-      <div className="border-t border-[var(--ui-border)] px-3 py-2 text-xs text-[var(--ui-text-secondary)]">
-        {source?.note ?? 'マウスで回転 / 左右同時押しで中心移動 / ホイールでズーム'}
       </div>
     </div>
   )
@@ -200,8 +210,8 @@ export function VRMCanvas({ source, onError, pose, speechText }: VRMCanvasProps)
 function SpeechBubble3D({ centerY, text }: { centerY: number | null; text: string }) {
   const y = (centerY ?? 0.4) + 0.35
   return (
-    <Html position={[0.5, y, 0]} center zIndexRange={[100, 0]}>
-      <div className="pointer-events-none max-w-[220px] rounded-2xl border border-[var(--ui-border)] bg-white/95 px-3 py-2 text-xs leading-relaxed text-[var(--ui-text)] shadow-lg">
+    <Html position={[0.5, y, 0]} center transform sprite distanceFactor={1.4} zIndexRange={[100, 0]}>
+      <div className="pointer-events-none w-[min(420px,70vw)] whitespace-pre-wrap break-words rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bubble-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--ui-text)] shadow-lg">
         {text}
       </div>
     </Html>

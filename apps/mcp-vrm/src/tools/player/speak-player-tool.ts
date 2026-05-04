@@ -17,7 +17,8 @@ interface SegmentInput {
 interface ResolvedSegment {
   text: string
   speaker: number
-  speedScale: number
+  speedScale?: number
+  explicitSpeedScale?: number
   pose?: string
 }
 
@@ -71,15 +72,16 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
     }): Promise<CallToolResult> => {
       try {
         const model = resolveVrmModel(runtime, modelId)
-        const effectiveSpeed = speedScale ?? config.defaultSpeedScale
         const baseSegments: ResolvedSegment[] = segments.map((s, index) => {
           if (!s.text?.trim()) {
             throw new Error(`segments[${index}].text is required`)
           }
+          const explicitSpeedScale = s.speedScale ?? speedScale
           return {
             text: s.text,
             speaker: model.speakerId,
-            speedScale: s.speedScale ?? effectiveSpeed,
+            speedScale: explicitSpeedScale,
+            explicitSpeedScale,
             pose: s.pose,
           }
         })
@@ -96,7 +98,12 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
                 speaker: s.speaker,
                 speedScale: s.speedScale,
               })
-              return { audioBase64: result.audioBase64 as string | undefined }
+              return {
+                audioBase64: result.audioBase64 as string | undefined,
+                speedScale: result.speedScale,
+                prePhonemeLength: result.prePhonemeLength,
+                postPhonemeLength: result.postPhonemeLength,
+              }
             } catch (error) {
               console.warn('[speak_player] synthesize failed for segment:', error)
               return { audioBase64: undefined }
@@ -105,11 +112,11 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
         )
 
         const nextState = {
-          segments: baseSegments.map((s) => ({
+          segments: baseSegments.map((s, index) => ({
             text: s.text,
             speaker: s.speaker,
             speakerName: speakerNameMap.get(s.speaker),
-            speedScale: s.speedScale,
+            speedScale: synthesized[index].speedScale ?? s.speedScale ?? config.defaultSpeedScale,
             ...(s.pose !== undefined ? { pose: s.pose } : {}),
           })),
           updatedAt: Date.now(),
@@ -122,7 +129,14 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
           text: s.text,
           speaker: s.speaker,
           speakerName: speakerNameMap.get(s.speaker),
-          speedScale: s.speedScale,
+          speedScale: synthesized[index].speedScale ?? s.speedScale ?? config.defaultSpeedScale,
+          ...(s.explicitSpeedScale !== undefined ? { explicitSpeedScale: s.explicitSpeedScale } : {}),
+          ...(synthesized[index].prePhonemeLength !== undefined
+            ? { prePhonemeLength: synthesized[index].prePhonemeLength }
+            : {}),
+          ...(synthesized[index].postPhonemeLength !== undefined
+            ? { postPhonemeLength: synthesized[index].postPhonemeLength }
+            : {}),
           ...(s.pose !== undefined ? { pose: s.pose } : {}),
           ...(synthesized[index].audioBase64 ? { audioBase64: synthesized[index].audioBase64 } : {}),
         }))

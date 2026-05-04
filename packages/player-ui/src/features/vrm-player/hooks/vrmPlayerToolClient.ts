@@ -61,8 +61,14 @@ export async function fetchDefaultVrmOnServer(app: App): Promise<VrmPayload | nu
  */
 export async function resynthesizeSegmentOnServer(
   app: App,
-  args: { speakerId: number; text: string; speedScale?: number }
-): Promise<{ audioBase64: string; audioMimeType: string }> {
+  args: { speakerId: number; text: string; speedScale?: number; prePhonemeLength?: number; postPhonemeLength?: number }
+): Promise<{
+  audioBase64: string
+  audioMimeType: string
+  speedScale?: number
+  prePhonemeLength?: number
+  postPhonemeLength?: number
+}> {
   const result = await app.callServerTool({
     name: '_resynthesize_for_player',
     arguments: args,
@@ -71,9 +77,21 @@ export async function resynthesizeSegmentOnServer(
 
   const payload = getTextPayload(result.content)
   if (!payload) throw new Error('Tool returned no text content')
-  const parsed = JSON.parse(payload) as { audioBase64?: string; audioMimeType?: string }
+  const parsed = JSON.parse(payload) as {
+    audioBase64?: string
+    audioMimeType?: string
+    speedScale?: number
+    prePhonemeLength?: number
+    postPhonemeLength?: number
+  }
   if (!parsed.audioBase64) throw new Error('audioBase64 missing in response')
-  return { audioBase64: parsed.audioBase64, audioMimeType: parsed.audioMimeType ?? 'audio/wav' }
+  return {
+    audioBase64: parsed.audioBase64,
+    audioMimeType: parsed.audioMimeType ?? 'audio/wav',
+    speedScale: parsed.speedScale,
+    prePhonemeLength: parsed.prePhonemeLength,
+    postPhonemeLength: parsed.postPhonemeLength,
+  }
 }
 
 interface VrmListEntry {
@@ -81,6 +99,8 @@ interface VrmListEntry {
   name: string
   speakerId: number
   isDefault?: boolean
+  thumbnailBase64?: string
+  thumbnailMimeType?: string
 }
 
 /** 登録済み VRM 一覧の軽量取得（プレイヤー上のモデルピッカー用）。 */
@@ -117,4 +137,42 @@ export async function fetchVrmModelOnServer(
   const parsed = JSON.parse(payload) as { metadata?: VrmListEntry; vrmUrl?: string }
   if (!parsed.metadata || !parsed.vrmUrl) throw new Error('Invalid VRM metadata response')
   return { metadata: parsed.metadata, vrmUrl: parsed.vrmUrl }
+}
+
+export interface PlayerSettings {
+  speedScale?: number
+  prePhonemeLength?: number
+  postPhonemeLength?: number
+}
+
+export interface PlayerSettingsResponse {
+  overrides: PlayerSettings
+  cliDefaults: PlayerSettings & { speedScale: number }
+}
+
+export async function fetchPlayerSettingsOnServer(app: App): Promise<PlayerSettingsResponse> {
+  const result = await app.callServerTool({
+    name: '_get_player_settings_for_player',
+    arguments: {},
+  })
+  assertNoToolError(result)
+
+  const payload = getTextPayload(result.content)
+  if (!payload) throw new Error('Tool returned no text content')
+  return JSON.parse(payload) as PlayerSettingsResponse
+}
+
+export async function setPlayerSettingsOnServer(
+  app: App,
+  args: PlayerSettings & { reset?: boolean }
+): Promise<PlayerSettingsResponse> {
+  const result = await app.callServerTool({
+    name: '_set_player_settings_for_player',
+    arguments: { ...args },
+  })
+  assertNoToolError(result)
+
+  const payload = getTextPayload(result.content)
+  if (!payload) throw new Error('Tool returned no text content')
+  return JSON.parse(payload) as PlayerSettingsResponse
 }

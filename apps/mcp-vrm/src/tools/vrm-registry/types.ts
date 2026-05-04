@@ -6,6 +6,8 @@ export interface VrmModel {
   isPublic: boolean
   vrmFilePath: string
   vrmSizeBytes: number
+  thumbnailBase64?: string
+  thumbnailMimeType?: string
   createdAt: number
   updatedAt: number
 }
