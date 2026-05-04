@@ -1,6 +1,5 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
-import type { PosePresetId } from '../../poses/presets'
-import { POSE_PRESETS } from '../../poses/presets'
+import { POSE_PRESETS, type PosePresetId } from '~/features/poses/presets'
 import type { VrmSource } from '../types'
 import { PlayerHeader } from './PlayerHeader'
 import { VRMCanvas } from './VRMCanvas'

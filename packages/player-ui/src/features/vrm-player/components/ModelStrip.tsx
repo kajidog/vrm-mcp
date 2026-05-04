@@ -1,6 +1,6 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import { useEffect, useState } from 'react'
-import { PencilIcon, PlusCircleIcon } from '../../../icons'
+import { PencilIcon, PlusCircleIcon } from '~/icons'
 import { fetchVrmListOnServer } from '../hooks/vrmPlayerToolClient'
 
 interface ModelStripEntry {

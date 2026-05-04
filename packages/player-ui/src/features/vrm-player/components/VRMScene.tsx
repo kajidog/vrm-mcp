@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef, useState } from 'react'
 import { Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '../../poses/presets'
+import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '~/features/poses/presets'
 import type { VrmSource } from '../types'
 
 interface VRMSceneProps {

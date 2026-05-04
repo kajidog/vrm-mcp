@@ -3,10 +3,9 @@ import { SettingsView } from './features/vrm-player/components/SettingsView'
 import { VRMPlayer } from './features/vrm-player/components/VRMPlayer'
 import { useDisplayMode } from './features/vrm-player/hooks/useDisplayMode'
 import { useVrmPlayerApp } from './features/vrm-player/hooks/useVrmPlayerApp'
-import { VrmListView } from './features/vrm-registry/VrmListView'
 import { VrmRegisterView } from './features/vrm-registry/VrmRegisterView'
 
-type View = 'player' | 'settings' | 'list' | 'register' | 'edit'
+type View = 'player' | 'settings' | 'register' | 'edit'
 
 function LoadingView({ label }: { label: string }) {
   return (
@@ -44,33 +43,16 @@ export function McpApp() {
     return null
   }
 
-  if (view === 'list') {
-    return (
-      <VrmListView
-        app={player.app}
-        onBack={() => setView('player')}
-        onAdd={() => {
-          setEditingModelId(null)
-          setView('register')
-        }}
-        onEdit={(modelId) => {
-          setEditingModelId(modelId)
-          setView('edit')
-        }}
-      />
-    )
-  }
-
   if (view === 'register' || view === 'edit') {
     return (
       <VrmRegisterView
         app={player.app}
         modelId={view === 'edit' ? editingModelId : null}
-        onBack={() => setView('list')}
+        onBack={() => setView('player')}
         onSaved={() => {
           setEditingModelId(null)
           setListRefreshKey((value) => value + 1)
-          setView('list')
+          setView('player')
         }}
       />
     )
@@ -82,7 +64,7 @@ export function McpApp() {
         app={player.app}
         busy={player.loadingModel}
         onBack={() => setView('player')}
-        onOpenModels={() => setView('list')}
+        onOpenModels={() => setView('player')}
         onApplied={async () => {
           await player.resynthesizeAll()
           setView('player')

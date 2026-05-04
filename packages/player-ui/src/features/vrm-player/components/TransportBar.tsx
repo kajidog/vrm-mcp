@@ -1,4 +1,4 @@
-import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from '../../../icons'
+import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from '~/icons'
 
 interface TransportBarProps {
   isPlaying: boolean

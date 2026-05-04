@@ -1,7 +1,7 @@
 import { Html, OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { type ComponentRef, useEffect, useRef, useState } from 'react'
-import type { PosePresetId } from '../../poses/presets'
+import type { PosePresetId } from '~/features/poses/presets'
 import { useColorScheme } from '../hooks/useColorScheme'
 import type { VrmSource } from '../types'
 import { VRMScene } from './VRMScene'

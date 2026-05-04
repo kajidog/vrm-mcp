@@ -1,5 +1,5 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
-import { FullscreenExitIcon, FullscreenIcon, SettingsIcon } from '../../../icons'
+import { FullscreenExitIcon, FullscreenIcon, SettingsIcon } from '~/icons'
 import { ModelStrip } from './ModelStrip'
 import { TransportBar } from './TransportBar'
 
