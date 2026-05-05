@@ -27,6 +27,7 @@ export interface VrmPayload {
   modelResourceUri?: string
 }
 
+import type { MouthRef } from './hooks/useLipSync'
 import type { PoseSegment } from './utils/vrmPayload'
 
 // useVrmPlayerApp が公開するビュー向け状態と操作。
@@ -68,4 +69,6 @@ export interface VrmPlayerState {
     postPhonemeLength?: number
   }) => Promise<void>
   setModelError: (message: string) => void
+  // 再生中音声のリップシンク値（aa/ih/ou/ee/oh）。VRMScene が毎フレーム参照する。
+  mouthRef: MouthRef
 }

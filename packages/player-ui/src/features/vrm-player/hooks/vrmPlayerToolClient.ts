@@ -1,4 +1,5 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
+import type { AudioQuery } from '~/types'
 import type { VrmPayload } from '../types'
 
 interface TextContent {
@@ -70,6 +71,7 @@ export interface SegmentAudio {
   index: number
   audioBase64?: string
   speedScale?: number
+  audioQuery?: AudioQuery
   prePhonemeLength?: number
   postPhonemeLength?: number
 }
@@ -117,6 +119,7 @@ export async function resynthesizeSegmentOnServer(
   audioBase64: string
   audioMimeType: string
   speedScale?: number
+  audioQuery?: AudioQuery
   prePhonemeLength?: number
   postPhonemeLength?: number
 }> {
@@ -132,6 +135,7 @@ export async function resynthesizeSegmentOnServer(
     audioBase64?: string
     audioMimeType?: string
     speedScale?: number
+    audioQuery?: AudioQuery
     prePhonemeLength?: number
     postPhonemeLength?: number
   }
@@ -140,6 +144,10 @@ export async function resynthesizeSegmentOnServer(
     audioBase64: parsed.audioBase64,
     audioMimeType: parsed.audioMimeType ?? 'audio/wav',
     speedScale: parsed.speedScale,
+    audioQuery:
+      parsed.audioQuery && typeof parsed.audioQuery === 'object'
+        ? (parsed.audioQuery as unknown as AudioQuery)
+        : undefined,
     prePhonemeLength: parsed.prePhonemeLength,
     postPhonemeLength: parsed.postPhonemeLength,
   }

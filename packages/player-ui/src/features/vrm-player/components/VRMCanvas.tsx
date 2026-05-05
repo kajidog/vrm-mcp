@@ -3,6 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { type ComponentRef, useEffect, useRef, useState } from 'react'
 import type { PosePresetId } from '~/features/poses/presets'
 import { useColorScheme } from '../hooks/useColorScheme'
+import type { MouthRef } from '../hooks/useLipSync'
 import type { VrmSource } from '../types'
 import { VRMScene } from './VRMScene'
 
@@ -21,6 +22,7 @@ interface VRMCanvasProps {
   totalSegments?: number
   hasSegments?: boolean
   fullscreen?: boolean
+  mouthRef?: MouthRef
   onPrev?: () => void
   onNext?: () => void
 }
@@ -183,6 +185,7 @@ export function VRMCanvas({
   totalSegments = 0,
   hasSegments = false,
   fullscreen = false,
+  mouthRef,
   onPrev = () => {},
   onNext = () => {},
 }: VRMCanvasProps) {
@@ -235,6 +238,7 @@ export function VRMCanvas({
               source={source}
               onError={onError}
               pose={pose}
+              mouthRef={mouthRef}
               onCenterReady={setCenterY}
               onHeadReady={setHeadPosition}
             />

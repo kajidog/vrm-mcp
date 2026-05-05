@@ -105,6 +105,7 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
                 speedScale: result.speedScale,
                 prePhonemeLength: result.prePhonemeLength,
                 postPhonemeLength: result.postPhonemeLength,
+                audioQuery: result.audioQuery,
               }
             } catch (error) {
               console.warn('[speak_player] synthesize failed for segment:', error)
@@ -125,6 +126,7 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
             ...(synthesized[index].postPhonemeLength !== undefined
               ? { postPhonemeLength: synthesized[index].postPhonemeLength }
               : {}),
+            ...(synthesized[index].audioQuery !== undefined ? { audioQuery: synthesized[index].audioQuery } : {}),
             ...(s.pose !== undefined ? { pose: s.pose } : {}),
           })),
           updatedAt: Date.now(),

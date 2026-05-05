@@ -104,6 +104,7 @@ export function McpApp() {
         thumbnailUrl={player.speakerIconUrl}
         fullscreen={fullscreen}
         canFullscreen={displayMode.canFullscreen}
+        mouthRef={player.mouthRef}
         onSwitchVrm={player.switchVrm}
         onPlay={player.play}
         onPause={player.pause}

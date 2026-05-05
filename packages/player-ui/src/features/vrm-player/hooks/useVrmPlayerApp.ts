@@ -10,6 +10,7 @@ import {
   extractPoseSegmentsFromResult,
 } from '../utils/vrmPayload'
 import { resolveVrmSource } from '../utils/vrmSource'
+import { useLipSync } from './useLipSync'
 import { useRevokableObjectUrl } from './useRevokableObjectUrl'
 import {
   fetchDefaultVrmOnServer,
@@ -167,6 +168,9 @@ export function useVrmPlayerApp(): VrmPlayerState {
   // モデル切替などで再生中に列が差し替わった場合、古い onended を無視するために使う。
   const playbackVersionRef = useRef(0)
   const speakerIconRequestRef = useRef(0)
+  // リップシンク制御。AudioContext は audio 生成の useEffect で attach し、
+  // セグメント切替で setSegment を呼ぶ。mouthRef を VrmPlayerState に流して VRMScene で参照する。
+  const lipSync = useLipSync()
   // ホストからツール入力 / 結果を一度でも受け取ったかどうか。
   // 受け取った後に初期デフォルトの非同期適用が遅れて返ってきても上書きしないためのガード。
   const toolInteractedRef = useRef(false)
@@ -188,6 +192,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
           ...segment,
           audioBase64: entry.audioBase64 ?? segment.audioBase64,
           speedScale: entry.speedScale ?? segment.speedScale,
+          audioQuery: entry.audioQuery ?? segment.audioQuery,
           prePhonemeLength: entry.prePhonemeLength ?? segment.prePhonemeLength,
           postPhonemeLength: entry.postPhonemeLength ?? segment.postPhonemeLength,
         }
@@ -251,6 +256,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
       audio.load()
     }
     releaseAudioUrl()
+    lipSync.setSegment(null)
     setCurrentTime(0)
     setDuration(0)
   }
@@ -306,11 +312,14 @@ export function useVrmPlayerApp(): VrmPlayerState {
         // 再生失敗したら推定時間で次に進む。
         schedulePoseTimer(index, version, estimateSegmentDurationMs(current))
       }
+      lipSync.setSegment(current)
+      lipSync.resumeContext()
       void audio.play().catch(() => {
         if (version !== playbackVersionRef.current) return
         schedulePoseTimer(index, version, estimateSegmentDurationMs(current))
       })
     } else {
+      lipSync.setSegment(null)
       schedulePoseTimer(index, version, estimateSegmentDurationMs(current))
     }
   }
@@ -344,6 +353,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
       setPaused(false)
       const audio = audioRef.current
       if (audio?.src && audio.paused && currentSegmentIndex !== null && poseTimerRemainingRef.current === null) {
+        lipSync.setSegment(list[currentSegmentIndex] ?? null)
+        lipSync.resumeContext()
         void audio.play().catch(() => {
           schedulePoseTimer(
             currentSegmentIndex,
@@ -374,6 +385,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     const audio = audioRef.current
     if (audio?.src && !audio.paused) {
       audio.pause()
+      lipSync.setSegment(null)
       setPaused(true)
       return
     }
@@ -389,6 +401,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
       poseTimerRef.current = null
       poseTimerStartedAtRef.current = null
       poseTimerDurationRef.current = null
+      lipSync.setSegment(null)
       setPaused(true)
     }
   }
@@ -423,11 +436,13 @@ export function useVrmPlayerApp(): VrmPlayerState {
     audio.addEventListener('timeupdate', updateTime)
     audio.addEventListener('loadedmetadata', updateDuration)
     audioRef.current = audio
+    lipSync.attachAudio(audio)
     return () => {
       stopPlayback()
       audio.removeEventListener('timeupdate', updateTime)
       audio.removeEventListener('loadedmetadata', updateDuration)
       audioRef.current = null
+      lipSync.dispose()
     }
   }, [])
 
@@ -660,6 +675,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
             audioBase64: result.audioBase64,
             speaker: speakerId,
             speedScale: result.speedScale ?? segment.speedScale,
+            audioQuery: result.audioQuery ?? segment.audioQuery,
             prePhonemeLength: result.prePhonemeLength,
             postPhonemeLength: result.postPhonemeLength,
           }
@@ -772,5 +788,6 @@ export function useVrmPlayerApp(): VrmPlayerState {
       setLoadingModel(true)
       void applyDefaultPayload(message).finally(() => setLoadingModel(false))
     },
+    mouthRef: lipSync.mouthRef,
   }
 }

@@ -1,5 +1,6 @@
 import type { McpUiToolInputNotification } from '@modelcontextprotocol/ext-apps'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { AudioQuery } from '~/types'
 import type { VrmPayload } from '../types'
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,6 +105,8 @@ export interface PoseSegment {
   audioBase64?: string
   speaker?: number
   speakerName?: string
+  // VOICEVOX のモーラ／母音長情報。リップシンクの母音モードで参照する。
+  audioQuery?: AudioQuery
 }
 
 function pickPoseSegments(source: unknown): PoseSegment[] | null {
@@ -125,6 +128,7 @@ function pickPoseSegments(source: unknown): PoseSegment[] | null {
       audioBase64: readString(segment, 'audioBase64'),
       speaker: typeof segment.speaker === 'number' ? segment.speaker : undefined,
       speakerName: readString(segment, 'speakerName'),
+      audioQuery: isRecord(segment.audioQuery) ? (segment.audioQuery as unknown as AudioQuery) : undefined,
     })
   }
   return result.length > 0 ? result : null

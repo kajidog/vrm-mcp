@@ -1,5 +1,6 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import { POSE_PRESETS, type PosePresetId } from '~/features/poses/presets'
+import type { MouthRef } from '../hooks/useLipSync'
 import type { VrmSource } from '../types'
 import { PlayerHeader } from './PlayerHeader'
 import { VRMCanvas } from './VRMCanvas'
@@ -23,6 +24,7 @@ interface VRMPlayerProps {
   thumbnailUrl?: string
   fullscreen: boolean
   canFullscreen: boolean
+  mouthRef: MouthRef
   onModelError: (message: string) => void
   onSwitchVrm: (modelId: string) => Promise<void>
   onPlay: () => void
@@ -59,6 +61,7 @@ export function VRMPlayer({
   thumbnailUrl,
   fullscreen,
   canFullscreen,
+  mouthRef,
   onModelError,
   onSwitchVrm,
   onPlay,
@@ -112,6 +115,7 @@ export function VRMPlayer({
           totalSegments={totalSegments}
           fullscreen={fullscreen}
           hasSegments={hasSegments}
+          mouthRef={mouthRef}
           onPrev={onPrev}
           onNext={onNext}
         />

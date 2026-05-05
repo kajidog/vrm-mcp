@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '~/features/poses/presets'
+import type { MouthRef } from '../hooks/useLipSync'
 import type { VrmSource } from '../types'
 
 interface VRMSceneProps {
@@ -11,6 +12,8 @@ interface VRMSceneProps {
   onError: (message: string) => void
   // 指定されたプリセット（idle, wave 等）を毎フレーム適用する。未指定時は idle（呼吸）。
   pose?: PosePresetId
+  // 再生中音声に対するリップシンク値。useLipSync が in-place で更新する。
+  mouthRef?: MouthRef
   // VRM ロード完了後、Canvas へ「キャラ上半身付近の y」を通知する。
   onCenterReady?: (y: number) => void
   // VRM ロード完了後、Canvas へ「頭ボーンのワールド座標」を通知する。
@@ -21,7 +24,7 @@ interface VRMSceneProps {
  * 渡された VrmSource を three.js シーンに常駐表示するコンポーネント。
  * `source.data`（バイナリ）か `source.src`（URL）のいずれかからロードする。
  */
-export function VRMScene({ source, onError, pose, onCenterReady, onHeadReady }: VRMSceneProps) {
+export function VRMScene({ source, onError, pose, mouthRef, onCenterReady, onHeadReady }: VRMSceneProps) {
   const [vrm, setVrm] = useState<VRM | null>(null)
   // lookAt の追従先として現在のカメラを使う（vrm.update() が毎フレーム参照する）。
   const { camera } = useThree()
@@ -179,11 +182,21 @@ export function VRMScene({ source, onError, pose, onCenterReady, onHeadReady }: 
   // 毎フレーム delta を渡して spring bone / 表情 / lookAt をシミュレーションする。
   // ポーズはヒューマノイドの正規化ボーン回転を上書きするので、vrm.update() の前に
   // 適用してから update でラインを正規化→生ボーンに反映させる（これで spring と競合しない）。
+  // 口形は vrm.update() がモーフを mesh に転写する前に書き込む必要がある。
   useFrame((_, delta) => {
     if (!vrm) return
     elapsedRef.current += delta
     const preset = POSE_PRESETS[poseRef.current]
     preset?.applyToVrm(vrm, elapsedRef.current)
+    const em = vrm.expressionManager
+    const mouth = mouthRef?.current
+    if (em && mouth) {
+      em.setValue('aa', mouth.aa)
+      em.setValue('ih', mouth.ih)
+      em.setValue('ou', mouth.ou)
+      em.setValue('ee', mouth.ee)
+      em.setValue('oh', mouth.oh)
+    }
     vrm.update(delta)
   })
 

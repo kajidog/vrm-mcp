@@ -113,6 +113,7 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
                 index,
                 audioBase64: result.audioBase64,
                 speedScale: result.speedScale,
+                audioQuery: result.audioQuery,
                 prePhonemeLength: result.prePhonemeLength,
                 postPhonemeLength: result.postPhonemeLength,
               }
@@ -193,6 +194,7 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
                 speakerId,
                 speakerName: result.speakerName,
                 speedScale: result.speedScale,
+                audioQuery: result.audioQuery,
                 prePhonemeLength: result.prePhonemeLength,
                 postPhonemeLength: result.postPhonemeLength,
               }),
