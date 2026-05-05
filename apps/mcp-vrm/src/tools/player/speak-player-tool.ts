@@ -37,7 +37,7 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
         modelId: z
           .string()
           .optional()
-          .describe('VRM model ID. Falls back to the registered default; errors if no default exists.'),
+          .describe('VRM model ID. Falls back to the registered default; otherwise uses the CLI default speaker.'),
         segments: z
           .array(
             z.object({
@@ -157,6 +157,7 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
           engineId: engine.id,
           engineDisplayName: engine.displayName,
           capabilities,
+          ...(model ? { resolvedModelId: model.id } : {}),
           ...(model
             ? {
                 vrmModel: {

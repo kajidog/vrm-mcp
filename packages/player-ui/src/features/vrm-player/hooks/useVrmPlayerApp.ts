@@ -1,10 +1,11 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import { useApp } from '@modelcontextprotocol/ext-apps/react'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { VrmPayload, VrmPlayerState, VrmPlayerStatus } from '../types'
 import {
   type PoseSegment,
+  extractModelIdFromInput,
   extractPayloadFromInput,
   extractPayloadFromResult,
   extractPoseSegmentsFromResult,
@@ -140,6 +141,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
   const [errorMsg, setErrorMsg] = useState('')
   const [source, setSource] = useState<VrmPlayerState['source']>(null)
   const [loadingModel, setLoadingModel] = useState(false)
+  const [loadingPhase, setLoadingPhase] = useState<VrmPlayerState['loadingPhase']>('idle')
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [pose, setPose] = useState<string | undefined>(undefined)
   const [segments, setSegments] = useState<PoseSegment[]>([])
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState<number | null>(null)
@@ -176,13 +179,20 @@ export function useVrmPlayerApp(): VrmPlayerState {
   const toolInteractedRef = useRef(false)
   const { replaceObjectUrl } = useRevokableObjectUrl()
 
+  const setLoadingState = useCallback((phase: VrmPlayerState['loadingPhase'], progress: number) => {
+    setLoadingPhase(phase)
+    setLoadingProgress(Math.min(100, Math.max(0, Math.round(progress))))
+  }, [])
+
   // speak_player は音声バイナリを返さないので、viewUUID 経由で取り直して
   // index 整列でマージする。失敗した場合は audioBase64 なしで返し、推定時間で再生する。
   const mergeSegmentAudio = async (segments: PoseSegment[], viewUUID: string): Promise<PoseSegment[]> => {
     const currentApp = appRef.current
     if (!currentApp) return segments
+    setLoadingState('preparingAudio', 65)
     try {
       const audio = await fetchSegmentsAudioOnServer(currentApp, viewUUID)
+      setLoadingState('preparingAudio', 95)
       if (!audio) return segments
       const byIndex = new Map(audio.segments.map((entry) => [entry.index, entry]))
       return segments.map((segment, index) => {
@@ -460,6 +470,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     replaceObjectUrl(null)
     setResolvedSource(null)
     setStatus('ready')
+    setLoadingState('ready', 100)
     setErrorMsg('')
   }
 
@@ -473,6 +484,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     if (!currentApp) return
 
     try {
+      setLoadingState('resolvingModel', 25)
       const resolved = await fetchDefaultVrmOnServer(currentApp)
       if (shouldAbort()) return
       if (!resolved) {
@@ -485,6 +497,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
         error,
         revokeUrl,
       } = await resolveVrmSource(currentApp, resolved.payload, { isDefault: true })
+      setLoadingState('loadingVrm', 45)
       if (shouldAbort()) {
         // 既に別系統の payload で表示が進んでいる時は、ここで作った Object URL は捨てる。
         if (revokeUrl) URL.revokeObjectURL(revokeUrl)
@@ -495,6 +508,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
       if (!defaultSource || error) {
         setResolvedSource(null)
         setStatus('error')
+        setLoadingState('error', 100)
         setErrorMsg(error ?? `${reason}。デフォルト VRM も取得できませんでした。`)
         return
       }
@@ -516,25 +530,67 @@ export function useVrmPlayerApp(): VrmPlayerState {
         void updateSpeakerIcon(meta.speakerId)
       }
       setStatus('ready')
+      setLoadingState('ready', 100)
       setErrorMsg('')
     } catch (error) {
       if (shouldAbort()) return
       setResolvedSource(null)
       setStatus('error')
+      setLoadingState('error', 100)
       setErrorMsg(`${reason}。デフォルト VRM も取得できませんでした: ${String(error)}`)
     }
   }
 
+  const applyModelPreview = async (modelId: string | undefined): Promise<void> => {
+    const currentApp = appRef.current
+    if (!currentApp) return
+    setLoadingState('resolvingModel', 25)
+    if (modelId) {
+      const { metadata, vrmUrl } = await fetchVrmModelOnServer(currentApp, modelId)
+      setActiveModel({
+        id: metadata.id,
+        name: metadata.name,
+        speakerId: metadata.speakerId,
+        thumbnailUrl:
+          metadata.thumbnailBase64 !== undefined
+            ? `data:${metadata.thumbnailMimeType ?? 'image/png'};base64,${metadata.thumbnailBase64}`
+            : undefined,
+      })
+      void updateSpeakerIcon(metadata.speakerId)
+      const {
+        source: nextSource,
+        error,
+        revokeUrl,
+      } = await resolveVrmSource(currentApp, { vrmUrl }, { isDefault: false })
+      replaceObjectUrl(revokeUrl ?? null)
+      setLoadingState('loadingVrm', 45)
+      if (error || !nextSource) {
+        setStatus('error')
+        setLoadingState('error', 100)
+        setErrorMsg(error ?? 'VRM の取得に失敗しました')
+        return
+      }
+      setResolvedSource({ ...nextSource, label: metadata.name })
+      setErrorMsg('')
+      return
+    }
+
+    await applyDefaultPayload('ツール入力のデフォルト VRM 解決')
+  }
+
   // ツール入力 / 結果のペイロードを表示用に解決する。
   // `fallbackStatus='ready'` のとき（=ツール結果）にだけデフォルト VRM へフォールバックする。
-  // 入力通知の段階（'waiting'）では「結果待ち」を維持し、勝手に default を出さない。
+  // 入力通知の段階（'waiting'）では結果待ちを維持する。modelId 未指定時の default 解決は
+  // `applyModelPreview` 側で先読みとして行う。
   const applyPayload = async (payload: VrmPayload | null, fallbackStatus: SettledStatus) => {
     const currentApp = appRef.current
     if (!currentApp) return
 
     setLoadingModel(true)
     try {
+      setLoadingState('resolvingModel', 25)
       const { source: nextSource, error, revokeUrl } = await resolveVrmSource(currentApp, payload)
+      setLoadingState('loadingVrm', 45)
       replaceObjectUrl(revokeUrl ?? null)
 
       if (error) {
@@ -549,6 +605,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
       setResolvedSource(nextSource)
       setStatus(nextSource ? 'ready' : fallbackStatus)
+      if (nextSource) setLoadingState('loadingVrm', 55)
+      else setLoadingState(fallbackStatus === 'ready' ? 'ready' : 'waitingTool', fallbackStatus === 'ready' ? 100 : 20)
       setErrorMsg('')
     } catch (error) {
       await applyDefaultPayload(`VRM の取得に失敗しました: ${String(error)}`)
@@ -567,7 +625,20 @@ export function useVrmPlayerApp(): VrmPlayerState {
       createdApp.ontoolinput = async (params) => {
         toolInteractedRef.current = true
         setStatus('waiting')
-        await applyPayload(extractPayloadFromInput(params), 'waiting')
+        setLoadingModel(true)
+        setLoadingState('waitingTool', 10)
+        try {
+          const inputPayload = extractPayloadFromInput(params)
+          if (inputPayload) await applyPayload(inputPayload, 'waiting')
+          else await applyModelPreview(extractModelIdFromInput(params))
+          setLoadingState('waitingTool', 20)
+        } catch (error) {
+          setStatus('error')
+          setLoadingState('error', 100)
+          setErrorMsg(`ツール入力のモデル解決に失敗しました: ${String(error)}`)
+        } finally {
+          setLoadingModel(false)
+        }
       }
 
       // ツール結果到着。エラーなら即エラー表示、それ以外はペイロードを解決する。
@@ -579,6 +650,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
           setCurrentSegmentIndex(null)
           setPose(undefined)
           setStatus('error')
+          setLoadingState('error', 100)
           setErrorMsg(extractErrorMessage(result))
           return
         }
@@ -588,40 +660,53 @@ export function useVrmPlayerApp(): VrmPlayerState {
           return
         }
 
-        // 結果に含まれる vrmModel から表示中モデル情報を更新する（モデル切替時の話者解決に使う）。
-        const meta = readToolMeta(result)
-        const structured = result.structuredContent as Record<string, unknown> | undefined
-        let hasVrmModel = false
-        if (structured && typeof structured === 'object' && 'vrmModel' in structured) {
-          const vm = structured.vrmModel as Record<string, unknown> | undefined
-          if (vm && typeof vm.id === 'string' && typeof vm.name === 'string' && typeof vm.speakerId === 'number') {
-            hasVrmModel = true
-            setActiveModel({ id: vm.id, name: vm.name, speakerId: vm.speakerId, thumbnailUrl: readDataUrl(vm) })
+        setLoadingModel(true)
+        setLoadingState('resolvingModel', 25)
+        try {
+          // 結果に含まれる vrmModel から表示中モデル情報を更新する（モデル切替時の話者解決に使う）。
+          const meta = readToolMeta(result)
+          const structured = result.structuredContent as Record<string, unknown> | undefined
+          let hasVrmModel = false
+          if (structured && typeof structured === 'object' && 'vrmModel' in structured) {
+            const vm = structured.vrmModel as Record<string, unknown> | undefined
+            if (vm && typeof vm.id === 'string' && typeof vm.name === 'string' && typeof vm.speakerId === 'number') {
+              hasVrmModel = true
+              setActiveModel({ id: vm.id, name: vm.name, speakerId: vm.speakerId, thumbnailUrl: readDataUrl(vm) })
+            }
           }
-        }
 
-        // speak_player の新形式は segments[].pose を含むがレスポンスサイズの都合で
-        // 音声バイナリは含めない。viewUUID で `_get_player_audio_for_player` を後追い
-        // 取得し、index 整列でマージしてから再生を始める。
-        const nextSegments = extractPoseSegmentsFromResult(result)
-        if (nextSegments) {
-          if (!hasVrmModel) setActiveModel(null)
-          const viewUUID = typeof meta.viewUUID === 'string' && meta.viewUUID.trim() ? meta.viewUUID : undefined
-          const segmentsForPlayback = viewUUID ? await mergeSegmentAudio(nextSegments, viewUUID) : nextSegments
-          startPlayback(segmentsForPlayback, { autoPlay: consumeAutoPlay(meta) })
-          void updateSpeakerIcon(segmentsForPlayback[0]?.speaker)
-        } else if (isPlayerToolResult(result)) {
-          stopPlayback()
-          setSegments([])
-          setCurrentSegmentIndex(null)
-          setPose(undefined)
-        }
+          await applyPayload(payload, 'ready')
 
-        await applyPayload(payload, 'ready')
+          // speak_player の新形式は segments[].pose を含むがレスポンスサイズの都合で
+          // 音声バイナリは含めない。viewUUID で `_get_player_audio_for_player` を後追い
+          // 取得し、index 整列でマージしてから再生を始める。
+          const nextSegments = extractPoseSegmentsFromResult(result)
+          if (nextSegments) {
+            if (!hasVrmModel) setActiveModel(null)
+            const viewUUID = typeof meta.viewUUID === 'string' && meta.viewUUID.trim() ? meta.viewUUID : undefined
+            const segmentsForPlayback = viewUUID ? await mergeSegmentAudio(nextSegments, viewUUID) : nextSegments
+            startPlayback(segmentsForPlayback, { autoPlay: consumeAutoPlay(meta) })
+            void updateSpeakerIcon(segmentsForPlayback[0]?.speaker)
+            setLoadingState('ready', 100)
+          } else if (isPlayerToolResult(result)) {
+            stopPlayback()
+            setSegments([])
+            setCurrentSegmentIndex(null)
+            setPose(undefined)
+            setLoadingState('ready', 100)
+          }
+        } catch (error) {
+          setStatus('error')
+          setLoadingState('error', 100)
+          setErrorMsg(`ツール結果の処理に失敗しました: ${String(error)}`)
+        } finally {
+          setLoadingModel(false)
+        }
       }
 
       createdApp.ontoolcancelled = () => {
         setStatus('waiting')
+        setLoadingState('waitingTool', 20)
       }
 
       createdApp.onteardown = async () => {
@@ -632,6 +717,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
       createdApp.onerror = (err: unknown) => {
         console.error('[VRM Player] Error:', err)
         setStatus('error')
+        setLoadingState('error', 100)
         setErrorMsg(String(err))
       }
     },
@@ -644,6 +730,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
   useEffect(() => {
     if (!app) return
     setStatus('waiting')
+    setLoadingState('waitingTool', 0)
     if (toolInteractedRef.current) return
     setLoadingModel(true)
     void applyDefaultPayload('プレイヤー初期化時のデフォルト VRM 読み込み', () => toolInteractedRef.current).finally(
@@ -654,8 +741,9 @@ export function useVrmPlayerApp(): VrmPlayerState {
   useEffect(() => {
     if (!appError) return
     setStatus('error')
+    setLoadingState('error', 100)
     setErrorMsg(`Connection error: ${appError.message}`)
-  }, [appError])
+  }, [appError, setLoadingState])
 
   const resynthesizeSegments = async (
     currentApp: App,
@@ -694,8 +782,10 @@ export function useVrmPlayerApp(): VrmPlayerState {
     if (!currentApp || !model || existing.length === 0) return
 
     setLoadingModel(true)
+    setLoadingState('preparingAudio', 65)
     try {
       startPlayback(await resynthesizeSegments(currentApp, model.speakerId, existing))
+      setLoadingState('ready', 100)
     } finally {
       setLoadingModel(false)
     }
@@ -710,16 +800,19 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
     setLoadingModel(true)
     try {
+      setLoadingState('resolvingModel', 25)
       const { metadata, vrmUrl } = await fetchVrmModelOnServer(currentApp, modelId)
       const {
         source: nextSource,
         error,
         revokeUrl,
       } = await resolveVrmSource(currentApp, { vrmUrl }, { isDefault: false })
+      setLoadingState('loadingVrm', 45)
       replaceObjectUrl(revokeUrl ?? null)
 
       if (error || !nextSource) {
         setStatus('error')
+        setLoadingState('error', 100)
         setErrorMsg(error ?? 'VRM の取得に失敗しました')
         return
       }
@@ -741,10 +834,13 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
       const existing = segmentsRef.current
       if (existing.length > 0) {
+        setLoadingState('preparingAudio', 65)
         startPlayback(await resynthesizeSegments(currentApp, metadata.speakerId, existing))
       }
+      setLoadingState('ready', 100)
     } catch (e) {
       setStatus('error')
+      setLoadingState('error', 100)
       setErrorMsg(`モデル切替に失敗しました: ${String(e)}`)
     } finally {
       setLoadingModel(false)
@@ -756,6 +852,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
     errorMsg,
     source,
     loadingModel,
+    loadingPhase,
+    loadingProgress,
     pose,
     segments,
     currentSegmentIndex,
@@ -781,12 +879,22 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setModelError: (message: string) => {
       if (sourceRef.current?.isDefault) {
         setStatus('error')
+        setLoadingState('error', 100)
         setErrorMsg(message)
         return
       }
 
       setLoadingModel(true)
       void applyDefaultPayload(message).finally(() => setLoadingModel(false))
+    },
+    notifyVrmLoadStart: () => {
+      if (loadingPhase === 'ready') return
+      setLoadingState('loadingVrm', Math.max(loadingProgress, 50))
+    },
+    notifyVrmLoaded: () => {
+      if (loadingPhase === 'loadingVrm' || loadingPhase === 'resolvingModel' || loadingPhase === 'waitingTool') {
+        setLoadingState('loadingVrm', 60)
+      }
     },
     mouthRef: lipSync.mouthRef,
   }

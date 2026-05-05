@@ -25,6 +25,8 @@ interface VRMCanvasProps {
   mouthRef?: MouthRef
   onPrev?: () => void
   onNext?: () => void
+  onLoadStart?: () => void
+  onLoaded?: () => void
 }
 
 const SCENE_COLORS = {
@@ -188,6 +190,8 @@ export function VRMCanvas({
   mouthRef,
   onPrev = () => {},
   onNext = () => {},
+  onLoadStart,
+  onLoaded,
 }: VRMCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const colorScheme = useColorScheme()
@@ -241,6 +245,8 @@ export function VRMCanvas({
               mouthRef={mouthRef}
               onCenterReady={setCenterY}
               onHeadReady={setHeadPosition}
+              onLoadStart={onLoadStart}
+              onLoaded={onLoaded}
             />
           ) : null}
           {/* 仮置き target。ロード完了後に CenterController が VRM の上半身高さに更新する。 */}

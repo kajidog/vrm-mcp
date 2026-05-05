@@ -18,13 +18,24 @@ interface VRMSceneProps {
   onCenterReady?: (y: number) => void
   // VRM ロード完了後、Canvas へ「頭ボーンのワールド座標」を通知する。
   onHeadReady?: (position: [number, number, number]) => void
+  onLoadStart?: () => void
+  onLoaded?: () => void
 }
 
 /**
  * 渡された VrmSource を three.js シーンに常駐表示するコンポーネント。
  * `source.data`（バイナリ）か `source.src`（URL）のいずれかからロードする。
  */
-export function VRMScene({ source, onError, pose, mouthRef, onCenterReady, onHeadReady }: VRMSceneProps) {
+export function VRMScene({
+  source,
+  onError,
+  pose,
+  mouthRef,
+  onCenterReady,
+  onHeadReady,
+  onLoadStart,
+  onLoaded,
+}: VRMSceneProps) {
   const [vrm, setVrm] = useState<VRM | null>(null)
   // lookAt の追従先として現在のカメラを使う（vrm.update() が毎フレーム参照する）。
   const { camera } = useThree()
@@ -52,6 +63,16 @@ export function VRMScene({ source, onError, pose, mouthRef, onCenterReady, onHea
     onHeadReadyRef.current = onHeadReady
   }, [onHeadReady])
 
+  const onLoadStartRef = useRef(onLoadStart)
+  useEffect(() => {
+    onLoadStartRef.current = onLoadStart
+  }, [onLoadStart])
+
+  const onLoadedRef = useRef(onLoaded)
+  useEffect(() => {
+    onLoadedRef.current = onLoaded
+  }, [onLoaded])
+
   useEffect(() => {
     let disposed = false
     let current: VRM | null = null
@@ -59,6 +80,7 @@ export function VRMScene({ source, onError, pose, mouthRef, onCenterReady, onHea
     loader.register((parser) => new VRMLoaderPlugin(parser))
     // 切り替え中に古いモデルを残さないように一旦クリア。
     setVrm(null)
+    onLoadStartRef.current?.()
 
     const handleLoaded = (gltf: { userData: Record<string, unknown> }) => {
       const loaded = gltf.userData.vrm as VRM | undefined
@@ -86,6 +108,7 @@ export function VRMScene({ source, onError, pose, mouthRef, onCenterReady, onHea
       loaded.update(0)
       current = loaded
       setVrm(loaded)
+      onLoadedRef.current?.()
 
       // カメラ初期位置を上半身寄りにするための y を Canvas 側へ通知する。
       // Chest が無いモデルもあるので Spine→Head の順でフォールバック。

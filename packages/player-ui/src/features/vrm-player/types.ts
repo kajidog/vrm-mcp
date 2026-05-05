@@ -1,6 +1,14 @@
 // Player の遷移状態。connecting=MCP App 接続前、waiting=ツール入力待ち、
 // ready=モデル表示中（または空表示）、error=エラー表示。
 export type VrmPlayerStatus = 'connecting' | 'waiting' | 'ready' | 'error'
+export type VrmPlayerLoadingPhase =
+  | 'idle'
+  | 'waitingTool'
+  | 'resolvingModel'
+  | 'loadingVrm'
+  | 'preparingAudio'
+  | 'ready'
+  | 'error'
 
 // 解決済みの VRM ソース。url 経由なら src、バイナリ展開済みなら data を持つ。
 // isDefault はモデルエラー時のフォールバック判断に使う。
@@ -38,6 +46,8 @@ export interface VrmPlayerState {
   errorMsg: string
   source: VrmSource | null
   loadingModel: boolean
+  loadingPhase: VrmPlayerLoadingPhase
+  loadingProgress: number
   isReadyForDisplay: boolean
   app: import('@modelcontextprotocol/ext-apps').App | null
   // 直近の speak_player 呼び出しで指示された現在のポーズID（idle 等）。未指定時は undefined。
@@ -69,6 +79,8 @@ export interface VrmPlayerState {
     postPhonemeLength?: number
   }) => Promise<void>
   setModelError: (message: string) => void
+  notifyVrmLoadStart: () => void
+  notifyVrmLoaded: () => void
   // 再生中音声のリップシンク値（aa/ih/ou/ee/oh）。VRMScene が毎フレーム参照する。
   mouthRef: MouthRef
 }

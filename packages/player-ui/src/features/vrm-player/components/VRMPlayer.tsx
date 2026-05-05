@@ -26,6 +26,8 @@ interface VRMPlayerProps {
   canFullscreen: boolean
   mouthRef: MouthRef
   onModelError: (message: string) => void
+  onVrmLoadStart: () => void
+  onVrmLoaded: () => void
   onSwitchVrm: (modelId: string) => Promise<void>
   onPlay: () => void
   onPause: () => void
@@ -63,6 +65,8 @@ export function VRMPlayer({
   canFullscreen,
   mouthRef,
   onModelError,
+  onVrmLoadStart,
+  onVrmLoaded,
   onSwitchVrm,
   onPlay,
   onPause,
@@ -118,6 +122,8 @@ export function VRMPlayer({
           mouthRef={mouthRef}
           onPrev={onPrev}
           onNext={onNext}
+          onLoadStart={onVrmLoadStart}
+          onLoaded={onVrmLoaded}
         />
       </div>
     </div>

@@ -150,7 +150,12 @@ describe('speak_player Phase 5', () => {
     })
 
     expect(result.isError).toBeUndefined()
-    const structured = result.structuredContent as { vrmModel?: { id: string }; segments: Array<{ speaker: number }> }
+    const structured = result.structuredContent as {
+      resolvedModelId?: string
+      vrmModel?: { id: string }
+      segments: Array<{ speaker: number }>
+    }
+    expect(structured.resolvedModelId).toBe(model.id)
     expect(structured.vrmModel?.id).toBe(model.id)
     expect(structured.segments[0].speaker).toBe(3)
   })
@@ -165,9 +170,11 @@ describe('speak_player Phase 5', () => {
     expect(result.isError).toBeUndefined()
     const structured = result.structuredContent as {
       vrmModel?: unknown
+      resolvedModelId?: unknown
       segments: Array<{ speaker: number; audioBase64?: string }>
     }
     expect(structured.vrmModel).toBeUndefined()
+    expect(structured.resolvedModelId).toBeUndefined()
     expect(structured.segments[0]).toMatchObject({ speaker: 1 })
     // audio binary は viewUUID で別途 `_get_player_audio_for_player` から取る前提。
     expect(structured.segments[0].audioBase64).toBeUndefined()

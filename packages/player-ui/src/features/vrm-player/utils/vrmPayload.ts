@@ -95,6 +95,10 @@ export function extractPayloadFromInput(params: McpUiToolInputNotification['para
   return pickVrmPayload(params.arguments)
 }
 
+export function extractModelIdFromInput(params: McpUiToolInputNotification['params']): string | undefined {
+  return isRecord(params.arguments) ? readString(params.arguments, 'modelId') : undefined
+}
+
 export interface PoseSegment {
   pose?: string
   text: string

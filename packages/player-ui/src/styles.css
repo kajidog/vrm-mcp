@@ -143,9 +143,43 @@ body {
   backdrop-filter: blur(2px);
 }
 
+.player-root-preparing {
+  pointer-events: none;
+  opacity: 0.48;
+  filter: blur(3px);
+  transition: opacity 0.16s ease, filter 0.16s ease;
+}
+
+.player-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255 255 255 / 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.player-loading-panel {
+  display: flex;
+  min-width: 280px;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-bg);
+  padding: 16px;
+  box-shadow: 0 18px 46px rgb(0 0 0 / 0.18);
+}
+
 @media (prefers-color-scheme: dark) {
   .initial-loading-overlay {
     background: rgb(0 0 0 / 0.5);
+  }
+
+  .player-loading-overlay {
+    background: rgb(0 0 0 / 0.34);
   }
 }
 
