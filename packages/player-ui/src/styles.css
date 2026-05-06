@@ -60,6 +60,11 @@ body {
   overflow: hidden;
 }
 
+[data-display-mode="fullscreen"][data-scrollable="true"] {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .vv-slider {
   width: 100%;
   accent-color: var(--ui-accent);

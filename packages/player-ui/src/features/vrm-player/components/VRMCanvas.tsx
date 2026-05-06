@@ -116,8 +116,8 @@ function WheelTrackController({
     }
 
     const onWheel = (event: WheelEvent) => {
-      event.preventDefault()
       if (event.shiftKey) {
+        event.preventDefault()
         zoomByDelta(event.deltaY)
         return
       }
@@ -128,11 +128,13 @@ function WheelTrackController({
       if (event.deltaY > 0) {
         // 末尾では次へ送らない（無効化）。
         if (index >= totalSegments - 1) return
+        event.preventDefault()
         lastWheelSwitchRef.current = now
         onNext()
       } else if (event.deltaY < 0) {
         // 先頭では前へ戻さない（無効化）。
         if (index <= 0) return
+        event.preventDefault()
         lastWheelSwitchRef.current = now
         onPrev()
       }

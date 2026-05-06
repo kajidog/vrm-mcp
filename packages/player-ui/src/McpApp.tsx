@@ -76,16 +76,28 @@ export function McpApp() {
 
   if (view === 'register' || view === 'edit') {
     return (
-      <VrmRegisterView
-        app={player.app}
-        modelId={view === 'edit' ? editingModelId : null}
-        onBack={() => setView('player')}
-        onSaved={() => {
-          setEditingModelId(null)
-          setListRefreshKey((value) => value + 1)
-          setView('player')
-        }}
-      />
+      <div
+        data-display-mode={displayMode.displayMode}
+        data-scrollable={fullscreen ? 'true' : undefined}
+        className={fullscreen ? 'h-full min-h-0 overflow-y-auto' : 'relative'}
+      >
+        <VrmRegisterView
+          app={player.app}
+          modelId={view === 'edit' ? editingModelId : null}
+          onBack={() => setView('player')}
+          onSaved={() => {
+            setEditingModelId(null)
+            setListRefreshKey((value) => value + 1)
+            setView('player')
+          }}
+          fullscreen={fullscreen}
+          canFullscreen={displayMode.canFullscreen}
+          onToggleFullscreen={() => {
+            if (fullscreen) void displayMode.requestInline()
+            else void displayMode.requestFullscreen()
+          }}
+        />
+      </div>
     )
   }
 
