@@ -1,5 +1,6 @@
 import type { AccentPhrase, AudioQuery } from '@kajidog/tts-client'
 import type { TtsEngine } from '@kajidog/tts-client'
+import { PoseRegistryStore } from '../pose-registry/store.js'
 import type { ToolDeps } from '../types.js'
 import { VrmRegistryStore } from '../vrm-registry/store.js'
 import { AudioCacheStore, createAudioCacheKey } from './audio-cache.js'
@@ -54,6 +55,7 @@ export interface PlayerRuntime {
   getSessionState: (viewUUID: string | undefined, sessionId: string | undefined) => PlayerSessionState | undefined
   getSessionStateByKey: (key: string) => PlayerSessionState | undefined
   vrmRegistry: VrmRegistryStore
+  poseRegistry: PoseRegistryStore
   playerSettings: PlayerSettingsStore
 }
 
@@ -64,6 +66,7 @@ export interface PlayerRuntime {
 let audioCacheStore: AudioCacheStore | null = null
 let sessionStateStore: SessionStateStore | null = null
 let vrmRegistryStore: VrmRegistryStore | null = null
+let poseRegistryStore: PoseRegistryStore | null = null
 let playerSettingsStore: PlayerSettingsStore | null = null
 let speakerCache: SpeakerEntry[] | null = null
 
@@ -80,6 +83,9 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
   if (!vrmRegistryStore) {
     vrmRegistryStore = new VrmRegistryStore({ cacheDir: audioCacheStore.getDir() })
   }
+  if (!poseRegistryStore) {
+    poseRegistryStore = new PoseRegistryStore({ cacheDir: audioCacheStore.getDir() })
+  }
   if (!playerSettingsStore) {
     playerSettingsStore = new PlayerSettingsStore(config)
   }
@@ -87,6 +93,7 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
   const cache = audioCacheStore
   const sessionState = sessionStateStore
   const vrmRegistry = vrmRegistryStore
+  const poseRegistry = poseRegistryStore
   const playerSettings = playerSettingsStore
   const playerEngine = engine
 
@@ -260,6 +267,7 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
     getSessionState: (viewUUID, sessionId) => sessionState.get(viewUUID, sessionId),
     getSessionStateByKey: (key) => sessionState.getByKey(key),
     vrmRegistry,
+    poseRegistry,
     playerSettings,
   }
 }

@@ -11,10 +11,11 @@ interface SettingsViewProps {
   busy: boolean
   onBack: () => void
   onOpenModels: () => void
+  onOpenPoses: () => void
   onApplied: () => Promise<void>
 }
 
-export function SettingsView({ app, busy, onBack, onOpenModels, onApplied }: SettingsViewProps) {
+export function SettingsView({ app, busy, onBack, onOpenModels, onOpenPoses, onApplied }: SettingsViewProps) {
   const [cliDefaults, setCliDefaults] = useState<PlayerSettings & { speedScale: number }>({ speedScale: 1 })
   const [values, setValues] = useState<PlayerSettings>({ speedScale: 1 })
   const [loading, setLoading] = useState(false)
@@ -116,6 +117,20 @@ export function SettingsView({ app, busy, onBack, onOpenModels, onApplied }: Set
         ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenModels}
+            className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-3 py-1.5 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)]"
+          >
+            モデル管理
+          </button>
+          <button
+            type="button"
+            onClick={onOpenPoses}
+            className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-3 py-1.5 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)]"
+          >
+            ポーズ管理
+          </button>
           <button
             type="button"
             disabled={loading || busy}

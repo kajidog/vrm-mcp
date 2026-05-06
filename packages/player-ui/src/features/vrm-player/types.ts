@@ -1,3 +1,7 @@
+import type { ModelPoseAttachment, PoseSource } from '../poses/types'
+import type { MouthRef } from './hooks/useLipSync'
+import type { PoseSegment } from './utils/vrmPayload'
+
 // Player の遷移状態。connecting=MCP App 接続前、waiting=ツール入力待ち、
 // ready=モデル表示中（または空表示）、error=エラー表示。
 export type VrmPlayerStatus = 'connecting' | 'waiting' | 'ready' | 'error'
@@ -35,9 +39,6 @@ export interface VrmPayload {
   modelResourceUri?: string
 }
 
-import type { MouthRef } from './hooks/useLipSync'
-import type { PoseSegment } from './utils/vrmPayload'
-
 // useVrmPlayerApp が公開するビュー向け状態と操作。
 // `app` はサーバー向けツール呼び出しが必要な兄弟ビュー（VRM 一覧画面など）に
 // 共有するためのハンドル。確立前は null。
@@ -51,7 +52,7 @@ export interface VrmPlayerState {
   isReadyForDisplay: boolean
   app: import('@modelcontextprotocol/ext-apps').App | null
   // 直近の speak_player 呼び出しで指示された現在のポーズID（idle 等）。未指定時は undefined。
-  pose: string | undefined
+  pose: PoseSource | null
   // 直近の speak_player 結果から取り出した全セグメント。再生されていなければ空配列。
   segments: PoseSegment[]
   // 現在再生中のセグメントの index（再生していないときは null）。
@@ -62,7 +63,13 @@ export interface VrmPlayerState {
   currentSegmentText: string | null
   speakerIconUrl?: string
   // 現在表示している登録モデル情報（モデル切替で更新）。
-  activeModel: { id: string; name: string; speakerId: number; thumbnailUrl?: string } | null
+  activeModel: {
+    id: string
+    name: string
+    speakerId: number
+    thumbnailUrl?: string
+    poses?: ModelPoseAttachment[]
+  } | null
   // 表示モデルを別の登録モデルへ切替し、必要なら現セグメントを新 speaker で再合成する。
   switchVrm: (modelId: string) => Promise<void>
   play: () => void

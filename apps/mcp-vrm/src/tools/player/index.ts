@@ -12,7 +12,7 @@ export function registerPlayerTools(deps: ToolDeps): void {
   // UIリソースと公開ツールを登録。
   registerPlayerResource(deps)
   registerSpeakPlayerTool(deps, runtime)
-  registerVrmPublicTools(deps, runtime.vrmRegistry)
+  registerVrmPublicTools(deps, runtime.vrmRegistry, runtime.poseRegistry)
 
   // App UI専用の内部ツール群に shared 依存を注入する。
   registerPlayerUITools(deps, {
@@ -23,6 +23,7 @@ export function registerPlayerTools(deps: ToolDeps): void {
     getSessionState: runtime.getSessionStateByKey,
     getSpeakerList: runtime.getSpeakerList,
     vrmRegistry: runtime.vrmRegistry,
+    poseRegistry: runtime.poseRegistry,
     playerSettings: runtime.playerSettings,
   })
 }

@@ -1,4 +1,5 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
+import type { ModelPoseAttachment } from '~/features/poses/types'
 import type { AudioQuery } from '~/types'
 import type { VrmPayload } from '../types'
 
@@ -158,6 +159,7 @@ export interface VrmListEntry {
   name: string
   speakerId: number
   isDefault?: boolean
+  poses?: ModelPoseAttachment[]
   thumbnailBase64?: string
   thumbnailMimeType?: string
 }

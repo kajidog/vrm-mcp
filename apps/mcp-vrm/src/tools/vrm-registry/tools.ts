@@ -5,6 +5,9 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 import { getVrmModelUrl } from '../../vrm-http.js'
 import type { PlayerUIToolContext } from '../player-ui/context.js'
+import type { PoseRegistryStore } from '../pose-registry/store.js'
+import type { ModelPoseAttachment } from '../pose-registry/types.js'
+import { isBuiltinPoseResourceId } from '../pose-registry/types.js'
 import { registerAppToolIfEnabled } from '../registration.js'
 import { createErrorResponse } from '../utils.js'
 import type { VrmRegistryStore } from './store.js'
@@ -14,6 +17,16 @@ function toMetadataPayload(model: VrmModel): Omit<VrmModel, 'vrmFilePath'> {
   // 内部のファイルパスは UI に出さない（パス露出と iframe からのアクセス不可のため）。
   const { vrmFilePath: _vrmFilePath, ...rest } = model
   return rest
+}
+
+function validateAttachments(poseRegistry: PoseRegistryStore, poses: ModelPoseAttachment[] | undefined): void {
+  if (poses === undefined) return
+  for (const pose of poses) {
+    if (!pose.poseId.trim()) throw new Error('poses[].poseId is required')
+    if (!pose.name.trim()) throw new Error('poses[].name is required')
+    if (isBuiltinPoseResourceId(pose.poseId)) continue
+    if (!poseRegistry.get(pose.poseId)) throw new Error(`Pose not found: ${pose.poseId}`)
+  }
 }
 
 async function loadConfiguredDefaultVrm(
@@ -31,7 +44,11 @@ async function loadConfiguredDefaultVrm(
   return { vrmBase64: data.toString('base64'), sourcePath: filePath }
 }
 
-export function registerVrmRegistryTools(context: PlayerUIToolContext, registry: VrmRegistryStore): void {
+export function registerVrmRegistryTools(
+  context: PlayerUIToolContext,
+  registry: VrmRegistryStore,
+  poseRegistry: PoseRegistryStore
+): void {
   const { deps, shared } = context
   const { server, disabledTools, config } = deps
   const { playerResourceUri } = shared
@@ -105,6 +122,7 @@ export function registerVrmRegistryTools(context: PlayerUIToolContext, registry:
         speakerId: z.number().describe('Speaker ID used when this VRM speaks via speak_player'),
         isDefault: z.boolean().optional().describe('Set as the global default VRM'),
         isPublic: z.boolean().optional().describe('Mark as public (reserved for future use)'),
+        poses: z.array(z.object({ poseId: z.string(), name: z.string() })).optional(),
         vrmBase64: z.string().min(1).describe('VRM/GLB file content encoded as base64'),
       },
       _meta: {
@@ -116,9 +134,11 @@ export function registerVrmRegistryTools(context: PlayerUIToolContext, registry:
       speakerId: number
       isDefault?: boolean
       isPublic?: boolean
+      poses?: ModelPoseAttachment[]
       vrmBase64: string
     }): Promise<CallToolResult> => {
       try {
+        validateAttachments(poseRegistry, input.poses)
         const model = await registry.register(input)
         return { content: [{ type: 'text', text: JSON.stringify({ vrm: toMetadataPayload(model) }) }] }
       } catch (error) {
@@ -140,6 +160,7 @@ export function registerVrmRegistryTools(context: PlayerUIToolContext, registry:
         speakerId: z.number().optional(),
         isDefault: z.boolean().optional(),
         isPublic: z.boolean().optional(),
+        poses: z.array(z.object({ poseId: z.string(), name: z.string() })).optional(),
       },
       _meta: {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
@@ -151,9 +172,11 @@ export function registerVrmRegistryTools(context: PlayerUIToolContext, registry:
       speakerId?: number
       isDefault?: boolean
       isPublic?: boolean
+      poses?: ModelPoseAttachment[]
     }): Promise<CallToolResult> => {
       try {
         const { modelId, ...fields } = input
+        validateAttachments(poseRegistry, fields.poses)
         const model = registry.update(modelId, fields)
         return { content: [{ type: 'text', text: JSON.stringify({ vrm: toMetadataPayload(model) }) }] }
       } catch (error) {

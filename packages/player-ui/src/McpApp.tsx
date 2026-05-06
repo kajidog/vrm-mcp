@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PoseListView } from './features/poses/PoseListView'
 import { SettingsView } from './features/vrm-player/components/SettingsView'
 import { VRMPlayer } from './features/vrm-player/components/VRMPlayer'
 import { useDisplayMode } from './features/vrm-player/hooks/useDisplayMode'
@@ -6,7 +7,7 @@ import { useVrmPlayerApp } from './features/vrm-player/hooks/useVrmPlayerApp'
 import type { VrmPlayerLoadingPhase } from './features/vrm-player/types'
 import { VrmRegisterView } from './features/vrm-registry/VrmRegisterView'
 
-type View = 'player' | 'settings' | 'register' | 'edit'
+type View = 'player' | 'settings' | 'register' | 'edit' | 'poses'
 
 function LoadingView({ label }: { label: string }) {
   return (
@@ -95,12 +96,17 @@ export function McpApp() {
         busy={player.loadingModel}
         onBack={() => setView('player')}
         onOpenModels={() => setView('player')}
+        onOpenPoses={() => setView('poses')}
         onApplied={async () => {
           await player.resynthesizeAll()
           setView('player')
         }}
       />
     )
+  }
+
+  if (view === 'poses') {
+    return <PoseListView app={player.app} onBack={() => setView('settings')} />
   }
 
   if (player.status === 'error') {

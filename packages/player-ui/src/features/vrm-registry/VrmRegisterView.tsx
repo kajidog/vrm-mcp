@@ -1,8 +1,11 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { DeleteIcon } from '~/icons'
-import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '../poses/presets'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DeleteIcon, PlayIcon } from '~/icons'
+import { PoseRegisterModal } from '../poses/PoseRegisterModal'
+import { usePoseRegistry } from '../poses/hooks/usePoseRegistry'
+import { DEFAULT_POSE_ID, POSE_PRESETS } from '../poses/presets'
+import type { ModelPoseAttachment } from '../poses/types'
 import { VRMCanvas } from '../vrm-player/components/VRMCanvas'
 import { useVrmFileDrop } from '../vrm-player/hooks/useVrmFileDrop'
 import type { VrmSource } from '../vrm-player/types'
@@ -54,27 +57,11 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes.buffer
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
-
-// 音声テストのプリセット。長すぎず・キャラクター差が出る短いセリフを少数用意。
-const TEST_PRESETS: ReadonlyArray<{ label: string; text: string }> = [
-  { label: '挨拶', text: 'こんにちは、はじめまして。よろしくお願いします。' },
-  { label: '質問', text: '今日はどんな話をしましょうか？' },
-  { label: '相づち', text: 'なるほど、それは面白いですね。' },
-  { label: 'カウント', text: '1、2、3、テスト中です。' },
-  { label: '感情', text: 'やったー！うれしい！' },
-]
 
 // 話者ポートレート（キャラクター画像）のフェッチ + uuid 単位のメモリキャッシュ。
 // 同じ uuid に対する重複リクエストを抑える。
@@ -144,30 +131,49 @@ function useSpeakers(app: App | null) {
   return { speakers, loading, error }
 }
 
+// React の reconciliation で「ポーズ名」入力欄がリレンダ毎にアンマウントされないように、
+// グループキーは attachment 単位で永続な _key を割り当てる。バックエンドへ送るときは strip。
+interface FormAttachment extends ModelPoseAttachment {
+  _key: string
+}
+
 interface FormState {
   name: string
   speakerId: number | null
   isDefault: boolean
   isPublic: boolean
+  poses: FormAttachment[]
 }
+
+let attachmentKeyCounter = 0
+const nextAttachmentKey = () => `att-${++attachmentKeyCounter}`
 
 const INITIAL_FORM: FormState = {
   name: '',
   speakerId: null,
   isDefault: false,
   isPublic: false,
+  poses: Object.keys(POSE_PRESETS).map((id) => ({
+    _key: nextAttachmentKey(),
+    poseId: `builtin:${id}`,
+    name: id,
+  })),
 }
 
+const stripAttachmentKeys = (poses: FormAttachment[]): ModelPoseAttachment[] => poses.map(({ _key, ...rest }) => rest)
+
+const withAttachmentKeys = (poses: ModelPoseAttachment[]): FormAttachment[] =>
+  poses.map((pose) => ({ ...pose, _key: nextAttachmentKey() }))
+
 /**
- * Phase 3: VRM 登録/編集画面。
+ * VRM 登録/編集画面。
  * - modelId === null: 新規登録（VRM ファイル必須）
  * - modelId !== null: メタ編集（VRM ファイル差し替え可、未選択なら既存 VRM を HTTP URL でプレビュー）
- *
- * プレビューと音声テストはフォーム入力中にその場で確認できる。
  */
 export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterViewProps) {
   const isEdit = modelId !== null
   const { vrms, register, update, replaceBinary, remove } = useVrmRegistry(app)
+  const { poses: availablePoses, poseLibrary, register: registerPose } = usePoseRegistry(app)
   const { speakers, loading: speakersLoading, error: speakersError } = useSpeakers(app)
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
@@ -182,12 +188,9 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [testingLabel, setTestingLabel] = useState<string | null>(null)
-  const [testError, setTestError] = useState<string | null>(null)
+  const [poseFormOpen, setPoseFormOpen] = useState(false)
   // プレビュー時の確認用ポーズ。保存する値ではないので form 外に持つ。
-  const [previewPose, setPreviewPose] = useState<PosePresetId>(DEFAULT_POSE_ID)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const audioUrlRef = useRef<string | null>(null)
+  const [previewPoseId, setPreviewPoseId] = useState(`builtin:${DEFAULT_POSE_ID}`)
 
   // 選択中話者の uuid から portrait を引く（キャッシュは uuid 単位）。
   const selectedSpeaker = speakers.find((s) => s.id === form.speakerId) ?? null
@@ -212,6 +215,7 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
       speakerId: metadata.speakerId,
       isDefault: metadata.isDefault,
       isPublic: metadata.isPublic,
+      poses: withAttachmentKeys(metadata.poses ?? stripAttachmentKeys(INITIAL_FORM.poses)),
     })
     setVrmBuffer(null)
     setExistingVrmUrl(null)
@@ -250,20 +254,6 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
     const first = speakers[0]
     if (first) setForm((prev) => ({ ...prev, speakerId: first.id }))
   }, [isEdit, speakers, form.speakerId])
-
-  // テスト音声のオーディオ URL は使い回さず、再生のたびに作り直して revoke する。
-  useEffect(() => {
-    return () => {
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current)
-        audioUrlRef.current = null
-      }
-      const el = audioRef.current
-      if (el) {
-        el.pause()
-      }
-    }
-  }, [])
 
   const onFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.vrm')) {
@@ -312,12 +302,14 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
     }
     setSaving(true)
     try {
+      const persistedPoses = stripAttachmentKeys(form.poses)
       if (isEdit && modelId) {
         await update(modelId, {
           name: form.name.trim(),
           speakerId: form.speakerId,
           isDefault: form.isDefault,
           isPublic: form.isPublic,
+          poses: persistedPoses,
         })
         if (vrmBuffer) {
           await replaceBinary(modelId, {
@@ -330,6 +322,7 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
           speakerId: form.speakerId,
           isDefault: form.isDefault,
           isPublic: form.isPublic,
+          poses: persistedPoses,
           vrmBase64: arrayBufferToBase64(vrmBuffer),
         })
       }
@@ -356,47 +349,100 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
     }
   }, [isEdit, modelId, remove, onSaved])
 
-  const handleTestSpeak = useCallback(
-    async (preset: { label: string; text: string }) => {
-      if (form.speakerId === null) {
-        setTestError('話者を選択してください。')
-        return
-      }
-      setTestError(null)
-      setTestingLabel(preset.label)
-      try {
-        const result = await app.callServerTool({
-          name: '_test_speak_for_player',
-          arguments: { speakerId: form.speakerId, text: preset.text },
-        })
-        const parsed = parseToolJson<{ audioBase64: string; audioMimeType?: string }>(result)
-        const mime = parsed.audioMimeType ?? 'audio/wav'
-        const bytes = base64ToArrayBuffer(parsed.audioBase64)
-        const blob = new Blob([bytes], { type: mime })
-        const url = URL.createObjectURL(blob)
-
-        // 直前の URL を破棄してから差し替え（メモリリーク防止）。
-        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
-        audioUrlRef.current = url
-
-        let audio = audioRef.current
-        if (!audio) {
-          audio = new Audio()
-          audioRef.current = audio
-        }
-        audio.src = url
-        await audio.play()
-      } catch (e) {
-        setTestError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setTestingLabel(null)
-      }
-    },
-    [app, form.speakerId]
-  )
-
   const dropProps = drop.dropHandlers
   const dragHighlight = drop.isDragging
+  const previewPose = poseLibrary.get(previewPoseId) ?? poseLibrary.get(`builtin:${DEFAULT_POSE_ID}`) ?? null
+  const firstPoseId = availablePoses[0]?.id ?? `builtin:${DEFAULT_POSE_ID}`
+  const poseSectionDisabled = !isEdit && !vrmBuffer
+
+  // 新しく追加したポーズグループのポーズ名 input に focus を当てるため、
+  // group の最初の attachment の `_key` を一意な「グループキー」として保持する。
+  // _key は名前変更で変わらないので、入力中にアンマウントが起きない。
+  const poseGroups = useMemo(() => {
+    const groups: Array<{
+      key: string
+      name: string
+      items: Array<{ attachment: FormAttachment; index: number }>
+    }> = []
+    for (const [index, attachment] of form.poses.entries()) {
+      const groupName = attachment.name
+      let group = groups.find((entry) => entry.name === groupName)
+      if (!group) {
+        group = { key: attachment._key, name: groupName, items: [] }
+        groups.push(group)
+      }
+      group.items.push({ attachment, index })
+    }
+    return groups
+  }, [form.poses])
+
+  const poseLabel = (poseId: string) => {
+    const pose = availablePoses.find((entry) => entry.id === poseId)
+    return pose?.name ? `${pose.name} (${pose.id})` : poseId
+  }
+
+  const groupNameRefs = useRef<Map<string, HTMLInputElement | null>>(new Map())
+  const [pendingFocusGroupKey, setPendingFocusGroupKey] = useState<string | null>(null)
+
+  // 新規グループ追加 → そのグループのポーズ名 input にフォーカスして全選択する。
+  // ref callback で groupNameRefs.current に登録された時点で commit が終わっているので、
+  // pendingFocusGroupKey の変化のみを依存にすれば良い。
+  useEffect(() => {
+    if (!pendingFocusGroupKey) return
+    const el = groupNameRefs.current.get(pendingFocusGroupKey)
+    if (el) {
+      el.focus()
+      el.select()
+      setPendingFocusGroupKey(null)
+    }
+  }, [pendingFocusGroupKey])
+
+  const renamePoseGroup = (oldName: string, nextName: string) => {
+    setForm((prev) => ({
+      ...prev,
+      poses: prev.poses.map((pose) => (pose.name === oldName ? { ...pose, name: nextName } : pose)),
+    }))
+  }
+
+  const changeAttachmentPoseId = (index: number, poseId: string) => {
+    if (!poseId) return
+    setForm((prev) => ({
+      ...prev,
+      poses: prev.poses.map((pose, i) => (i === index ? { ...pose, poseId } : pose)),
+    }))
+    setPreviewPoseId(poseId)
+  }
+
+  const addVariationToGroup = (groupName: string) => {
+    const poseId = firstPoseId
+    setForm((prev) => ({
+      ...prev,
+      poses: [...prev.poses, { _key: nextAttachmentKey(), poseId, name: groupName }],
+    }))
+    setPreviewPoseId(poseId)
+  }
+
+  const addPoseGroup = () => {
+    // 既存のグループ名と被らない初期値を作る。日本語のプレースホルダにしておくと
+    // ユーザがそのまま選択 → 入力で上書きしやすい。
+    const taken = new Set(form.poses.map((pose) => pose.name))
+    let candidate = '新規ポーズ'
+    let n = 2
+    while (taken.has(candidate)) {
+      candidate = `新規ポーズ ${n++}`
+    }
+    const key = nextAttachmentKey()
+    setForm((prev) => ({
+      ...prev,
+      poses: [...prev.poses, { _key: key, poseId: firstPoseId, name: candidate }],
+    }))
+    setPreviewPoseId(firstPoseId)
+    setPendingFocusGroupKey(key)
+  }
+
+  const removeAttachmentAt = (index: number) => {
+    setForm((prev) => ({ ...prev, poses: prev.poses.filter((_, poseIndex) => poseIndex !== index) }))
+  }
 
   return (
     <div
@@ -456,58 +502,196 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{deleteError}</div>
       ) : null}
 
-      {/* VRM ファイル / プレビュー */}
-      <div className="space-y-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-[var(--ui-text)]">VRM ファイル</div>
-          <button
-            type="button"
-            onClick={() => drop.openFilePicker()}
-            className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)]"
-          >
-            {isEdit ? 'モデルを変更' : 'ファイルを選択'}
-          </button>
-        </div>
-        <div className="text-xs text-[var(--ui-text-secondary)]">
-          {vrmFileName ? (
-            <>
-              {vrmFileName} <span className="ml-2">{formatBytes(vrmSize)}</span>
-            </>
+      <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
+        {/* プレビューと VRM ファイル選択を 1 つのカードに統合。ドロップ領域もこのカード内に置く。 */}
+        <div className="flex flex-col gap-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="text-xs font-semibold text-[var(--ui-text)]">プレビュー</div>
+              <div className="truncate text-[11px] text-[var(--ui-text-secondary)]">
+                {vrmFileName ? (
+                  <>
+                    {vrmFileName} <span className="ml-1">{formatBytes(vrmSize)}</span>
+                  </>
+                ) : (
+                  'ここに .vrm ファイルをドロップ'
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {previewError ? <div className="truncate text-xs text-red-600">{previewError}</div> : null}
+              <button
+                type="button"
+                onClick={() => drop.openFilePicker()}
+                className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)]"
+              >
+                {isEdit ? 'モデルを変更' : 'ファイルを選択'}
+              </button>
+            </div>
+          </div>
+          {previewSource ? (
+            <VRMCanvas
+              source={previewSource}
+              onError={setPreviewError}
+              pose={previewPose}
+              speechText={null}
+              heightClassName="h-[min(62vh,620px)] min-h-[420px]"
+            />
+          ) : isEdit ? (
+            <div className="flex h-[420px] items-center justify-center rounded-md border border-dashed border-[var(--ui-border)] text-center text-xs text-[var(--ui-text-secondary)]">
+              既存 VRM のプレビューURLを取得しています。
+            </div>
           ) : (
-            'ここに .vrm ファイルをドロップ、または「ファイルを選択」'
+            <div className="flex h-[420px] items-center justify-center rounded-md border border-dashed border-[var(--ui-border)] text-center text-xs text-[var(--ui-text-secondary)]">
+              VRM ファイルをドロップまたは選択するとプレビューできます。
+            </div>
           )}
         </div>
-        {previewError ? <div className="text-xs text-red-600">{previewError}</div> : null}
-        {previewSource ? (
-          <>
-            <VRMCanvas source={previewSource} onError={setPreviewError} pose={previewPose} speechText={null} />
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              <span className="font-semibold text-[var(--ui-text)]">ポーズ確認</span>
-              <select
-                value={previewPose}
-                onChange={(e) => setPreviewPose(e.target.value as PosePresetId)}
-                className="min-w-[8rem] rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
-              >
-                {Object.entries(POSE_PRESETS).map(([id, preset]) => (
-                  <option key={id} value={id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[11px] text-[var(--ui-text-secondary)]">
-                プリセット動作確認用。保存はされません。
-              </span>
+
+        {/* ポーズはプレビューの隣に配置し、高さは VRM プレビューと揃える（はみ出した分はスクロール）。 */}
+        <div
+          className={`relative flex h-full min-h-0 flex-col gap-2 overflow-hidden rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3 transition-opacity ${
+            poseSectionDisabled ? 'pointer-events-none opacity-50' : ''
+          }`}
+          aria-disabled={poseSectionDisabled}
+        >
+          <div className="flex min-h-9 items-center justify-between gap-2">
+            <div className="space-y-0.5">
+              <div className="text-xs font-semibold text-[var(--ui-text)]">ポーズ</div>
+              <div className="text-[11px] leading-relaxed text-[var(--ui-text-secondary)]">
+                MCP
+                からポーズ名で呼び出します。同じポーズ名にバリエーションを複数登録すると、再生のたびに自動で切り替わります。
+              </div>
             </div>
-          </>
-        ) : isEdit ? (
-          <div className="rounded-md border border-dashed border-[var(--ui-border)] p-4 text-center text-xs text-[var(--ui-text-secondary)]">
-            既存 VRM のプレビューURLを取得しています。
+            <button
+              type="button"
+              onClick={() => setPoseFormOpen(true)}
+              disabled={poseSectionDisabled}
+              className="shrink-0 rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)] disabled:opacity-50"
+            >
+              ポーズを登録
+            </button>
           </div>
-        ) : null}
+
+          {poseFormOpen ? (
+            <PoseRegisterModal
+              existingIds={availablePoses.map((pose) => pose.id)}
+              saving={saving}
+              previewSource={previewSource}
+              onClose={() => setPoseFormOpen(false)}
+              onRegister={registerPose}
+            />
+          ) : null}
+
+          {poseSectionDisabled ? (
+            <div className="rounded-md border border-dashed border-[var(--ui-border)] p-4 text-center text-xs text-[var(--ui-text-secondary)]">
+              VRM ファイルを選択するとポーズを編集できます。
+            </div>
+          ) : (
+            <>
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                {poseGroups.map((group) => (
+                  <div
+                    key={group.key}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-2 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-2"
+                  >
+                    <label className="flex flex-col gap-1">
+                      <span className="block text-[11px] text-[var(--ui-text-secondary)]">ポーズ名</span>
+                      <input
+                        ref={(el) => {
+                          if (el) groupNameRefs.current.set(group.key, el)
+                          else groupNameRefs.current.delete(group.key)
+                        }}
+                        value={group.name}
+                        onChange={(event) => renamePoseGroup(group.name, event.target.value)}
+                        placeholder="例: happy"
+                        className="h-10 w-full min-w-0 rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 text-sm font-semibold text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
+                      />
+                    </label>
+                    <div className="flex flex-col gap-1.5 self-start">
+                      <span className="block text-[11px] text-[var(--ui-text-secondary)]">バリエーション</span>
+                      {group.items.map(({ attachment, index }) => {
+                        const active = previewPoseId === attachment.poseId
+                        return (
+                          <div
+                            key={attachment._key}
+                            className={`grid h-10 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-md border bg-[var(--ui-button-bg)] px-2 ${
+                              active ? 'border-[var(--ui-accent)]' : 'border-[var(--ui-border)]'
+                            }`}
+                          >
+                            <select
+                              value={attachment.poseId}
+                              onChange={(event) => changeAttachmentPoseId(index, event.target.value)}
+                              className="min-w-0 truncate rounded border border-transparent bg-transparent text-xs text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
+                            >
+                              {availablePoses.map((pose) => (
+                                <option
+                                  key={pose.id}
+                                  value={pose.id}
+                                  className="bg-[var(--ui-button-bg)] text-[var(--ui-text)]"
+                                >
+                                  {poseLabel(pose.id)}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              title="プレビュー"
+                              onClick={() => setPreviewPoseId(attachment.poseId)}
+                              className={`flex h-7 w-7 items-center justify-center rounded ${
+                                active
+                                  ? 'bg-[var(--ui-accent)] text-white'
+                                  : 'text-[var(--ui-text-secondary)] hover:bg-[var(--ui-tag-bg)] hover:text-[var(--ui-text)]'
+                              }`}
+                            >
+                              <PlayIcon />
+                            </button>
+                            <button
+                              type="button"
+                              title="削除"
+                              onClick={() => removeAttachmentAt(index)}
+                              className="flex h-7 w-7 items-center justify-center rounded text-[var(--ui-danger)] hover:bg-[var(--ui-tag-bg)]"
+                            >
+                              <DeleteIcon />
+                            </button>
+                          </div>
+                        )
+                      })}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => addVariationToGroup(group.name)}
+                          disabled={availablePoses.length === 0}
+                          className="rounded-md border border-dashed border-[var(--ui-border)] px-2 py-1 text-[11px] text-[var(--ui-text-secondary)] hover:border-[var(--ui-accent)] hover:text-[var(--ui-text)] disabled:opacity-50"
+                        >
+                          + バリエーション
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {poseGroups.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-[var(--ui-border)] p-4 text-center text-xs text-[var(--ui-text-secondary)]">
+                    まだポーズが割り当てられていません。下の「+ 割り当てを追加」から作成してください。
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={addPoseGroup}
+                  disabled={availablePoses.length === 0}
+                  className="rounded-md border border-[var(--ui-accent)] bg-[var(--ui-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--ui-accent-hover)] disabled:opacity-50"
+                >
+                  + 割り当てを追加
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* メタ */}
-      <div className="space-y-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3">
+      <div className="grid gap-3 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3 md:grid-cols-2">
         <label className="block text-xs">
           <div className="mb-1 font-semibold text-[var(--ui-text)]">表示名</div>
           <input
@@ -515,15 +699,12 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
             value={form.name}
             onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             placeholder="例: マイキャラ"
-            className="w-full rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-sm text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
+            className="w-full rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-2 text-sm text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
           />
         </label>
 
         <div className="text-xs">
           <div className="mb-1 font-semibold text-[var(--ui-text)]">話者</div>
-          <div className="mb-1 text-[11px] text-[var(--ui-text-secondary)]">
-            このモデルで TTS 合成するときの声。あとから「編集」でいつでも変更できます。
-          </div>
           <div className="flex items-center gap-2">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--ui-border)] bg-[var(--ui-tag-bg)] text-[var(--ui-text-secondary)]">
               {portrait ? (
@@ -543,12 +724,12 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
                 setForm((prev) => ({ ...prev, speakerId: next }))
               }}
               disabled={speakersLoading}
-              className="min-w-0 flex-1 rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-sm text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-2 text-sm text-[var(--ui-text)] focus:border-[var(--ui-accent)] focus:outline-none"
             >
               <option value="">{speakersLoading ? '読み込み中...' : '選択してください'}</option>
               {speakers.map((s) => (
                 <option key={`${s.uuid}-${s.id}`} value={s.id}>
-                  {s.characterName}（{s.name}） / id: {s.id}
+                  {s.characterName}（{s.name}）
                 </option>
               ))}
             </select>
@@ -558,7 +739,7 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--ui-text)]">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--ui-text)] md:col-span-2">
           <label className="flex items-center gap-1">
             <input
               type="checkbox"
@@ -576,31 +757,6 @@ export function VrmRegisterView({ app, modelId, onBack, onSaved }: VrmRegisterVi
             公開（予約フラグ）
           </label>
         </div>
-      </div>
-
-      {/* 音声テスト */}
-      <div className="space-y-2 rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold text-[var(--ui-text)]">音声テスト</div>
-          {testingLabel ? (
-            <div className="text-[11px] text-[var(--ui-text-secondary)]">「{testingLabel}」合成中...</div>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {TEST_PRESETS.map((preset) => (
-            <button
-              type="button"
-              key={preset.label}
-              title={preset.text}
-              onClick={() => void handleTestSpeak(preset)}
-              disabled={testingLabel !== null || form.speakerId === null}
-              className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)] hover:border-[var(--ui-accent)] disabled:opacity-50"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-        {testError ? <div className="text-[11px] text-red-600">{testError}</div> : null}
       </div>
 
       {confirmDeleteOpen ? (

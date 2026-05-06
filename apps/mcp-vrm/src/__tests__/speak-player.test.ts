@@ -6,6 +6,7 @@ import type { ServerConfig } from '../config.js'
 import type { PlayerRuntime } from '../tools/player/runtime.js'
 import type { PlayerSessionState } from '../tools/player/session-state.js'
 import { registerSpeakPlayerTool } from '../tools/player/speak-player-tool.js'
+import { PoseRegistryStore } from '../tools/pose-registry/store.js'
 import { VrmRegistryStore } from '../tools/vrm-registry/store.js'
 
 const TMP = join(process.cwd(), '__test_speak_player_tmp__')
@@ -71,6 +72,7 @@ function buildHarness(registry: VrmRegistryStore) {
     getSessionState: (viewUUID, sessionId) => sessionStates.get(viewUUID ?? sessionId ?? 'global'),
     getSessionStateByKey: (key) => sessionStates.get(key),
     vrmRegistry: registry,
+    poseRegistry: new PoseRegistryStore({ cacheDir: TMP }),
     playerSettings: {} as PlayerRuntime['playerSettings'],
   }
 
@@ -122,7 +124,13 @@ describe('speak_player Phase 5', () => {
 
     expect(result.isError).toBeUndefined()
     const structured = result.structuredContent as {
-      vrmModel?: { id: string; name: string; speakerId: number; vrmUrl: string }
+      vrmModel?: {
+        id: string
+        name: string
+        speakerId: number
+        vrmUrl: string
+        poses: Array<{ id: string; name: string; loop: boolean }>
+      }
       segments: Array<{ text: string; speaker: number; pose?: string; speedScale: number }>
     }
     expect(structured.vrmModel).toEqual({
@@ -130,6 +138,15 @@ describe('speak_player Phase 5', () => {
       name: 'Alice',
       speakerId: 7,
       vrmUrl: `http://localhost:8765/vrms/${model.id}.vrm`,
+      poses: [
+        { id: 'builtin:idle', name: 'idle', loop: true },
+        { id: 'builtin:neutral', name: 'neutral', loop: true },
+        { id: 'builtin:wave', name: 'wave', loop: true },
+        { id: 'builtin:bow', name: 'bow', loop: true },
+        { id: 'builtin:point', name: 'point', loop: true },
+        { id: 'builtin:think', name: 'think', loop: true },
+        { id: 'builtin:cheer', name: 'cheer', loop: true },
+      ],
     })
     expect(structured.segments).toHaveLength(2)
     expect(structured.segments[0]).toMatchObject({ text: 'Hi', pose: 'wave', speaker: 7 })

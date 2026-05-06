@@ -1,5 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { getVrmModelUrl } from '../../vrm-http.js'
+import type { PoseRegistryStore } from '../pose-registry/store.js'
+import { isBuiltinPoseResourceId } from '../pose-registry/types.js'
 import { registerToolIfEnabled } from '../registration.js'
 import type { ToolDeps } from '../types.js'
 import { createErrorResponse } from '../utils.js'
@@ -13,9 +15,14 @@ interface PublicVrmEntry {
   vrmUrl: string
   vrmSizeBytes: number
   updatedAt: number
+  poses: { id: string; name: string; loop: boolean }[]
 }
 
-export function registerVrmPublicTools(deps: ToolDeps, registry: VrmRegistryStore): void {
+export function registerVrmPublicTools(
+  deps: ToolDeps,
+  registry: VrmRegistryStore,
+  poseRegistry: PoseRegistryStore
+): void {
   const { server, disabledTools, config } = deps
 
   registerToolIfEnabled(
@@ -25,7 +32,7 @@ export function registerVrmPublicTools(deps: ToolDeps, registry: VrmRegistryStor
     {
       title: 'List VRMs',
       description:
-        'List registered VRM models. Use this before calling speak_player to discover valid modelId values. Returns metadata only (no binary).',
+        'List registered VRM models. Use this before calling speak_player to discover valid modelId values and model poses. Pass segments[].pose as one of poses[].name; duplicate names are randomly selected during playback. Returns metadata only (no binary).',
       inputSchema: {},
       annotations: {
         readOnlyHint: true,
@@ -44,6 +51,13 @@ export function registerVrmPublicTools(deps: ToolDeps, registry: VrmRegistryStor
           vrmUrl: getVrmModelUrl(config, model.id),
           vrmSizeBytes: model.vrmSizeBytes,
           updatedAt: model.updatedAt,
+          poses: (model.poses ?? []).flatMap((attachment) => {
+            if (isBuiltinPoseResourceId(attachment.poseId)) {
+              return [{ id: attachment.poseId, name: attachment.name, loop: true }]
+            }
+            const pose = poseRegistry.get(attachment.poseId)
+            return pose ? [{ id: attachment.poseId, name: attachment.name, loop: pose.loop }] : []
+          }),
         }))
         const summary =
           entries.length === 0 ? 'No VRM models registered.' : `${entries.length} VRM model(s) registered.`

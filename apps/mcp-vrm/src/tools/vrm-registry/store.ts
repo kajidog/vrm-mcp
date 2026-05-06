@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { createDefaultBuiltinAttachments } from '../pose-registry/types.js'
 import { extractVrmThumbnail } from './thumbnail.js'
 import type { VrmModel } from './types.js'
 
@@ -19,6 +20,7 @@ export interface RegisterVrmInput {
   speakerId: number
   isDefault?: boolean
   isPublic?: boolean
+  poses?: VrmModel['poses']
   vrmBase64: string
 }
 
@@ -27,6 +29,7 @@ export interface UpdateVrmInput {
   speakerId?: number
   isDefault?: boolean
   isPublic?: boolean
+  poses?: VrmModel['poses']
 }
 
 /**
@@ -89,6 +92,7 @@ export class VrmRegistryStore {
       speakerId: input.speakerId,
       isDefault: input.isDefault === true,
       isPublic: input.isPublic === true,
+      poses: input.poses ?? createDefaultBuiltinAttachments(),
       vrmFilePath,
       vrmSizeBytes: buffer.byteLength,
       ...(thumbnail
@@ -116,6 +120,7 @@ export class VrmRegistryStore {
       ...(fields.speakerId !== undefined ? { speakerId: fields.speakerId } : {}),
       ...(fields.isDefault !== undefined ? { isDefault: fields.isDefault } : {}),
       ...(fields.isPublic !== undefined ? { isPublic: fields.isPublic } : {}),
+      ...(fields.poses !== undefined ? { poses: fields.poses } : {}),
       updatedAt: Date.now(),
     }
 

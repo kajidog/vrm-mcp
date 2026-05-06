@@ -137,3 +137,17 @@ export const POSE_PRESETS = {
 export type PosePresetId = keyof typeof POSE_PRESETS
 
 export const DEFAULT_POSE_ID: PosePresetId = 'idle'
+
+export const BUILTIN_POSE_RESOURCE_IDS = Object.keys(POSE_PRESETS).map(
+  (id) => `builtin:${id}`
+) as Array<`builtin:${PosePresetId}`>
+
+export function isBuiltinPoseResourceId(value: string): value is `builtin:${PosePresetId}` {
+  return BUILTIN_POSE_RESOURCE_IDS.includes(value as `builtin:${PosePresetId}`)
+}
+
+export function posePresetIdFromResourceId(value: string): PosePresetId | null {
+  if (!isBuiltinPoseResourceId(value)) return null
+  const presetId = value.slice('builtin:'.length) as PosePresetId
+  return presetId in POSE_PRESETS ? presetId : null
+}

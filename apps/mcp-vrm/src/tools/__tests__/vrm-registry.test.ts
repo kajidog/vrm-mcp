@@ -47,6 +47,15 @@ describe('VrmRegistryStore', () => {
     expect(model.name).toBe('Alice')
     expect(model.isDefault).toBe(false)
     expect(model.isPublic).toBe(false)
+    expect(model.poses?.map((pose) => pose.poseId)).toEqual([
+      'builtin:idle',
+      'builtin:neutral',
+      'builtin:wave',
+      'builtin:bow',
+      'builtin:point',
+      'builtin:think',
+      'builtin:cheer',
+    ])
     expect(model.vrmSizeBytes).toBe(SAMPLE_VRM_BYTES.byteLength)
     expect(existsSync(model.vrmFilePath)).toBe(true)
     expect(readFileSync(model.vrmFilePath)).toEqual(SAMPLE_VRM_BYTES)

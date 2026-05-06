@@ -1,17 +1,25 @@
 import { type VRM, VRMHumanBoneName, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
+import { type VRMAnimation, VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef, useState } from 'react'
-import { Vector3 } from 'three'
+import { type AnimationAction, AnimationMixer, LoopOnce, LoopRepeat, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { DEFAULT_POSE_ID, POSE_PRESETS, type PosePresetId } from '~/features/poses/presets'
+import { DEFAULT_POSE_ID, POSE_PRESETS } from '~/features/poses/presets'
+import type { PoseSource } from '~/features/poses/types'
 import type { MouthRef } from '../hooks/useLipSync'
 import type { VrmSource } from '../types'
+
+const DEFAULT_POSE_SOURCE: PoseSource = {
+  kind: 'builtin',
+  id: `builtin:${DEFAULT_POSE_ID}`,
+  presetId: DEFAULT_POSE_ID,
+  applyToVrm: POSE_PRESETS[DEFAULT_POSE_ID].applyToVrm,
+}
 
 interface VRMSceneProps {
   source: VrmSource
   onError: (message: string) => void
-  // 指定されたプリセット（idle, wave 等）を毎フレーム適用する。未指定時は idle（呼吸）。
-  pose?: PosePresetId
+  pose?: PoseSource | null
   // 再生中音声に対するリップシンク値。useLipSync が in-place で更新する。
   mouthRef?: MouthRef
   // VRM ロード完了後、Canvas へ「キャラ上半身付近の y」を通知する。
@@ -42,9 +50,15 @@ export function VRMScene({
   // 経過時間（idle の呼吸など、時刻ベースの揺らぎに使う）。useFrame の delta を加算する。
   const elapsedRef = useRef(0)
   // pose は ref に写してから useFrame で参照する（レンダ越しに最新値を拾うため）。
-  const poseRef = useRef<PosePresetId>(pose ?? DEFAULT_POSE_ID)
+  const poseRef = useRef<PoseSource>(pose ?? DEFAULT_POSE_SOURCE)
+  const vrmaCacheRef = useRef<Map<string, Promise<VRMAnimation>>>(new Map())
+  const mixerRef = useRef<AnimationMixer | null>(null)
+  const actionRef = useRef<AnimationAction | null>(null)
+  const activeVrmaKeyRef = useRef<string | null>(null)
+  const [loadedVrmaKey, setLoadedVrmaKey] = useState<string | null>(null)
+
   useEffect(() => {
-    poseRef.current = pose ?? DEFAULT_POSE_ID
+    poseRef.current = pose ?? DEFAULT_POSE_SOURCE
   }, [pose])
 
   // onError / onCenterReady を ref 経由で参照し、コールバック差し替えで useEffect が再実行されないようにする。
@@ -107,6 +121,9 @@ export function VRMScene({
       loaded.springBoneManager?.reset()
       loaded.update(0)
       current = loaded
+      mixerRef.current = new AnimationMixer(loaded.scene)
+      actionRef.current = null
+      activeVrmaKeyRef.current = null
       setVrm(loaded)
       onLoadedRef.current?.()
 
@@ -177,6 +194,9 @@ export function VRMScene({
         disposed = true
         controller.abort()
         if (current) {
+          mixerRef.current?.stopAllAction()
+          mixerRef.current = null
+          actionRef.current = null
           VRMUtils.deepDispose(current.scene)
         }
       }
@@ -187,10 +207,58 @@ export function VRMScene({
     return () => {
       disposed = true
       if (current) {
+        mixerRef.current?.stopAllAction()
+        mixerRef.current = null
+        actionRef.current = null
         VRMUtils.deepDispose(current.scene)
       }
     }
   }, [source.data, source.src])
+
+  useEffect(() => {
+    if (!vrm) return
+    const poseSource = pose ?? DEFAULT_POSE_SOURCE
+    poseRef.current = poseSource
+
+    if (poseSource.kind !== 'vrma') {
+      mixerRef.current?.stopAllAction()
+      actionRef.current = null
+      activeVrmaKeyRef.current = null
+      vrm.humanoid.resetNormalizedPose()
+      setLoadedVrmaKey(null)
+      return
+    }
+
+    const key = `${poseSource.vrmaUrl}:${poseSource.vrmaData?.byteLength ?? 0}:${poseSource.loop ? 'loop' : 'once'}`
+    if (activeVrmaKeyRef.current === key && actionRef.current) return
+    mixerRef.current?.stopAllAction()
+    actionRef.current = null
+    activeVrmaKeyRef.current = key
+    vrm.humanoid.resetNormalizedPose()
+
+    let cancelled = false
+    const load = getVrmaAnimation(vrmaCacheRef.current, poseSource.vrmaUrl, poseSource.vrmaData)
+    load
+      .then((vrmAnimation) => {
+        if (cancelled || activeVrmaKeyRef.current !== key) return
+        const mixer = mixerRef.current ?? new AnimationMixer(vrm.scene)
+        mixerRef.current = mixer
+        const clip = createVRMAnimationClip(vrmAnimation, vrm)
+        const action = mixer.clipAction(clip)
+        action.setLoop(poseSource.loop ? LoopRepeat : LoopOnce, poseSource.loop ? Number.POSITIVE_INFINITY : 1)
+        action.clampWhenFinished = true
+        action.reset().play()
+        actionRef.current = action
+        setLoadedVrmaKey(key)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) onErrorRef.current(error instanceof Error ? error.message : String(error))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [vrm, pose])
 
   // 目線追従: vrm.lookAt.target にカメラを刺すと vrm.update() が眼/頭骨を毎フレーム回す。
   // モデル差し替え時は新しい vrm に対して再度設定する必要がある。
@@ -209,8 +277,15 @@ export function VRMScene({
   useFrame((_, delta) => {
     if (!vrm) return
     elapsedRef.current += delta
-    const preset = POSE_PRESETS[poseRef.current]
-    preset?.applyToVrm(vrm, elapsedRef.current)
+    const poseSource = poseRef.current
+    if (poseSource.kind === 'builtin') {
+      mixerRef.current?.stopAllAction()
+      actionRef.current = null
+      activeVrmaKeyRef.current = null
+      poseSource.applyToVrm(vrm, elapsedRef.current)
+    } else if (loadedVrmaKey === activeVrmaKeyRef.current) {
+      mixerRef.current?.update(delta)
+    }
     const em = vrm.expressionManager
     const mouth = mouthRef?.current
     if (em && mouth) {
@@ -227,4 +302,35 @@ export function VRMScene({
 
   // VRM のルートが原点(0,0,0)に立つので、足元をグリッドに合わせて少し下げる。
   return <primitive object={vrm.scene} position={[0, -1, 0]} />
+}
+
+function getVrmaAnimation(
+  cache: Map<string, Promise<VRMAnimation>>,
+  vrmaUrl: string,
+  vrmaData?: ArrayBuffer
+): Promise<VRMAnimation> {
+  const cacheKey = `${vrmaUrl}:${vrmaData?.byteLength ?? 0}`
+  const cached = cache.get(cacheKey)
+  if (cached) return cached
+
+  const promise = new Promise<VRMAnimation>((resolve, reject) => {
+    const loader = new GLTFLoader()
+    loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
+    const handleLoaded = (gltf: { userData: Record<string, unknown> }) => {
+      const animations = gltf.userData.vrmAnimations as VRMAnimation[] | undefined
+      const animation = animations?.[0]
+      if (!animation) {
+        reject(new Error('VRMA として読み込めませんでした。ファイル形式を確認してください。'))
+        return
+      }
+      resolve(animation)
+    }
+    if (vrmaData) {
+      loader.parse(vrmaData.slice(0), '', handleLoaded, reject)
+      return
+    }
+    loader.load(vrmaUrl, handleLoaded, undefined, reject)
+  })
+  cache.set(cacheKey, promise)
+  return promise
 }

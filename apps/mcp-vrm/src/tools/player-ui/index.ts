@@ -1,3 +1,4 @@
+import { registerPoseRegistryTools } from '../pose-registry/tools.js'
 import type { ToolDeps } from '../types.js'
 import { registerVrmRegistryTools } from '../vrm-registry/tools.js'
 import { createPlayerUIToolContext } from './context.js'
@@ -16,5 +17,6 @@ export function registerPlayerUITools(deps: ToolDeps, shared: PlayerUIShared): v
   registerPlayerSpeakerTools(context)
   registerPlayerSettingsTools(context)
   registerTestSpeakTools(context)
-  registerVrmRegistryTools(context, shared.vrmRegistry)
+  registerPoseRegistryTools(context, shared.poseRegistry, shared.vrmRegistry)
+  registerVrmRegistryTools(context, shared.vrmRegistry, shared.poseRegistry)
 }

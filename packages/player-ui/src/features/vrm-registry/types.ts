@@ -1,3 +1,5 @@
+import type { ModelPoseAttachment } from '../poses/types'
+
 // VRM レジストリ UI が受け取るメタデータ。
 // サーバ側 `_list_vrms_for_player` / `_register_vrm_for_player` が返す
 // `vrmFilePath` を除いた形と一致させる。
@@ -11,6 +13,7 @@ export interface VrmMetadata {
   speakerId: number
   isDefault: boolean
   isPublic: boolean
+  poses?: ModelPoseAttachment[]
   vrmSizeBytes: number
   thumbnailBase64?: string
   thumbnailMimeType?: string
@@ -23,6 +26,7 @@ export interface RegisterVrmRequest {
   speakerId: number
   isDefault?: boolean
   isPublic?: boolean
+  poses?: ModelPoseAttachment[]
   vrmBase64: string
 }
 
@@ -31,6 +35,7 @@ export interface UpdateVrmRequest {
   speakerId?: number
   isDefault?: boolean
   isPublic?: boolean
+  poses?: ModelPoseAttachment[]
 }
 
 export interface ReplaceVrmBinaryRequest {

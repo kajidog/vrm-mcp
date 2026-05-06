@@ -1,5 +1,5 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
-import { POSE_PRESETS, type PosePresetId } from '~/features/poses/presets'
+import type { PoseSource } from '~/features/poses/types'
 import type { MouthRef } from '../hooks/useLipSync'
 import type { VrmSource } from '../types'
 import { PlayerHeader } from './PlayerHeader'
@@ -9,7 +9,7 @@ interface VRMPlayerProps {
   app: App | null
   source: VrmSource | null
   loadingModel: boolean
-  pose?: string
+  pose?: PoseSource | null
   speechText: string | null
   activeModelId: string | null
   listRefreshKey: number
@@ -37,11 +37,6 @@ interface VRMPlayerProps {
   onAddModel: () => void
   onEditModel: (modelId: string) => void
   onToggleFullscreen: () => void
-}
-
-function asPresetId(value: string | undefined): PosePresetId | undefined {
-  if (!value) return undefined
-  return value in POSE_PRESETS ? (value as PosePresetId) : undefined
 }
 
 export function VRMPlayer({
@@ -77,8 +72,6 @@ export function VRMPlayer({
   onEditModel,
   onToggleFullscreen,
 }: VRMPlayerProps) {
-  const presetPose = asPresetId(pose)
-
   return (
     <div className={fullscreen ? 'flex h-full min-h-0 flex-col gap-2 p-2' : 'space-y-3 p-3'}>
       <PlayerHeader
@@ -113,7 +106,7 @@ export function VRMPlayer({
         <VRMCanvas
           source={source}
           onError={onModelError}
-          pose={presetPose}
+          pose={pose}
           speechText={speechText}
           currentIndex={currentIndex}
           totalSegments={totalSegments}

@@ -2,6 +2,9 @@ import type { App } from '@modelcontextprotocol/ext-apps'
 import { useApp } from '@modelcontextprotocol/ext-apps/react'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePoseRegistry } from '~/features/poses/hooks/usePoseRegistry'
+import { resolveSegmentPose } from '~/features/poses/resolve'
+import type { ModelPoseAttachment, PoseSource } from '~/features/poses/types'
 import type { VrmPayload, VrmPlayerState, VrmPlayerStatus } from '../types'
 import {
   type PoseSegment,
@@ -84,6 +87,23 @@ function readToolMeta(result: CallToolResult): Record<string, unknown> {
   }
 }
 
+function readModelPoses(value: unknown): ModelPoseAttachment[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const poses = value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const record = entry as Record<string, unknown>
+    if (typeof record.id === 'string' && typeof record.name === 'string') {
+      return [{ poseId: record.id, name: record.name }]
+    }
+    if (typeof record.poseId === 'string' && typeof record.name === 'string') {
+      return [{ poseId: record.poseId, name: record.name }]
+    }
+    return []
+  })
+
+  return poses.length > 0 ? poses : undefined
+}
+
 function consumeAutoPlay(meta: Record<string, unknown>): boolean {
   const wantedAutoPlay = meta.autoPlay !== false
   const viewUUID = typeof meta.viewUUID === 'string' && meta.viewUUID.trim() ? meta.viewUUID : undefined
@@ -143,7 +163,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
   const [loadingModel, setLoadingModel] = useState(false)
   const [loadingPhase, setLoadingPhase] = useState<VrmPlayerState['loadingPhase']>('idle')
   const [loadingProgress, setLoadingProgress] = useState(0)
-  const [pose, setPose] = useState<string | undefined>(undefined)
+  const [pose, setPose] = useState<PoseSource | null>(null)
   const [segments, setSegments] = useState<PoseSegment[]>([])
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState<number | null>(null)
   const [activeModel, setActiveModel] = useState<VrmPlayerState['activeModel']>(null)
@@ -171,6 +191,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
   // モデル切替などで再生中に列が差し替わった場合、古い onended を無視するために使う。
   const playbackVersionRef = useRef(0)
   const speakerIconRequestRef = useRef(0)
+  const activeModelRef = useRef<VrmPlayerState['activeModel']>(null)
+  const poseLibraryRef = useRef<Map<string, PoseSource>>(new Map())
   // リップシンク制御。AudioContext は audio 生成の useEffect で attach し、
   // セグメント切替で setSegment を呼ぶ。mouthRef を VrmPlayerState に流して VRMScene で参照する。
   const lipSync = useLipSync()
@@ -178,6 +200,15 @@ export function useVrmPlayerApp(): VrmPlayerState {
   // 受け取った後に初期デフォルトの非同期適用が遅れて返ってきても上書きしないためのガード。
   const toolInteractedRef = useRef(false)
   const { replaceObjectUrl } = useRevokableObjectUrl()
+
+  const setResolvedActiveModel = (model: VrmPlayerState['activeModel']) => {
+    activeModelRef.current = model
+    setActiveModel(model)
+  }
+
+  const resolveCurrentPose = useCallback((poseName: string | undefined): PoseSource | null => {
+    return resolveSegmentPose(poseName, activeModelRef.current?.poses, poseLibraryRef.current)
+  }, [])
 
   const setLoadingState = useCallback((phase: VrmPlayerState['loadingPhase'], progress: number) => {
     setLoadingPhase(phase)
@@ -296,7 +327,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     if (!current) {
       playbackIndexRef.current = list.length
       setCurrentSegmentIndex(null)
-      setPose('idle')
+      setPose(resolveCurrentPose('idle'))
       return
     }
 
@@ -304,7 +335,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setCurrentSegmentIndex(index)
     setCurrentTime(0)
     setDuration(0)
-    setPose(current.pose ?? 'idle')
+    setPose(resolveCurrentPose(current.pose ?? 'idle'))
 
     const audio = audioRef.current
     releaseAudioUrl()
@@ -343,13 +374,13 @@ export function useVrmPlayerApp(): VrmPlayerState {
     if (next.length === 0) {
       playbackIndexRef.current = 0
       setCurrentSegmentIndex(null)
-      setPose(undefined)
+      setPose(null)
       return
     }
     if (options.autoPlay === false) {
       playbackIndexRef.current = 0
       setCurrentSegmentIndex(null)
-      setPose('idle')
+      setPose(resolveCurrentPose('idle'))
       return
     }
     playSegmentAt(0, playbackVersionRef.current)
@@ -518,10 +549,11 @@ export function useVrmPlayerApp(): VrmPlayerState {
       // config 由来のフォールバックでは metadata なしなので、active モデルは未設定のまま。
       if (resolved.metadata) {
         const meta = resolved.metadata
-        setActiveModel({
+        setResolvedActiveModel({
           id: meta.id,
           name: meta.name,
           speakerId: meta.speakerId,
+          poses: meta.poses,
           thumbnailUrl:
             meta.thumbnailBase64 !== undefined
               ? `data:${meta.thumbnailMimeType ?? 'image/png'};base64,${meta.thumbnailBase64}`
@@ -547,10 +579,11 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setLoadingState('resolvingModel', 25)
     if (modelId) {
       const { metadata, vrmUrl } = await fetchVrmModelOnServer(currentApp, modelId)
-      setActiveModel({
+      setResolvedActiveModel({
         id: metadata.id,
         name: metadata.name,
         speakerId: metadata.speakerId,
+        poses: metadata.poses,
         thumbnailUrl:
           metadata.thumbnailBase64 !== undefined
             ? `data:${metadata.thumbnailMimeType ?? 'image/png'};base64,${metadata.thumbnailBase64}`
@@ -648,7 +681,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
           stopPlayback()
           setSegments([])
           setCurrentSegmentIndex(null)
-          setPose(undefined)
+          setPose(null)
           setStatus('error')
           setLoadingState('error', 100)
           setErrorMsg(extractErrorMessage(result))
@@ -671,7 +704,13 @@ export function useVrmPlayerApp(): VrmPlayerState {
             const vm = structured.vrmModel as Record<string, unknown> | undefined
             if (vm && typeof vm.id === 'string' && typeof vm.name === 'string' && typeof vm.speakerId === 'number') {
               hasVrmModel = true
-              setActiveModel({ id: vm.id, name: vm.name, speakerId: vm.speakerId, thumbnailUrl: readDataUrl(vm) })
+              setResolvedActiveModel({
+                id: vm.id,
+                name: vm.name,
+                speakerId: vm.speakerId,
+                poses: readModelPoses(vm.poses),
+                thumbnailUrl: readDataUrl(vm),
+              })
             }
           }
 
@@ -682,7 +721,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
           // 取得し、index 整列でマージしてから再生を始める。
           const nextSegments = extractPoseSegmentsFromResult(result)
           if (nextSegments) {
-            if (!hasVrmModel) setActiveModel(null)
+            if (!hasVrmModel) setResolvedActiveModel(null)
             const viewUUID = typeof meta.viewUUID === 'string' && meta.viewUUID.trim() ? meta.viewUUID : undefined
             const segmentsForPlayback = viewUUID ? await mergeSegmentAudio(nextSegments, viewUUID) : nextSegments
             startPlayback(segmentsForPlayback, { autoPlay: consumeAutoPlay(meta) })
@@ -692,7 +731,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
             stopPlayback()
             setSegments([])
             setCurrentSegmentIndex(null)
-            setPose(undefined)
+            setPose(null)
             setLoadingState('ready', 100)
           }
         } catch (error) {
@@ -722,6 +761,14 @@ export function useVrmPlayerApp(): VrmPlayerState {
       }
     },
   })
+
+  const { poseLibrary } = usePoseRegistry(app ?? null)
+
+  useEffect(() => {
+    poseLibraryRef.current = poseLibrary
+    const currentSegment = currentSegmentIndex !== null ? segmentsRef.current[currentSegmentIndex] : null
+    setPose(resolveCurrentPose(currentSegment?.pose ?? 'idle'))
+  }, [poseLibrary, currentSegmentIndex, resolveCurrentPose])
 
   // App ハンドルが確立した直後は「ツール入力待ち」へ遷移させる。
   // 加えて、まだツール入出力が無いうちにデフォルト VRM をプリロードして
@@ -819,10 +866,11 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
       // 表示中ラベルを「登録名」で上書き（vrmUrl だと UUID しか出ないため）。
       setResolvedSource({ ...nextSource, label: metadata.name, note: 'モデルを切替えました' })
-      setActiveModel({
+      setResolvedActiveModel({
         id: metadata.id,
         name: metadata.name,
         speakerId: metadata.speakerId,
+        poses: metadata.poses,
         thumbnailUrl:
           metadata.thumbnailBase64 !== undefined
             ? `data:${metadata.thumbnailMimeType ?? 'image/png'};base64,${metadata.thumbnailBase64}`

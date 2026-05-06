@@ -1,9 +1,12 @@
+import type { ModelPoseAttachment } from '../pose-registry/types.js'
+
 export interface VrmModel {
   id: string
   name: string
   speakerId: number
   isDefault: boolean
   isPublic: boolean
+  poses?: ModelPoseAttachment[]
   vrmFilePath: string
   vrmSizeBytes: number
   thumbnailBase64?: string

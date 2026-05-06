@@ -1,7 +1,7 @@
 import { Html, OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { type ComponentRef, useEffect, useRef, useState } from 'react'
-import type { PosePresetId } from '~/features/poses/presets'
+import type { PoseSource } from '~/features/poses/types'
 import { useColorScheme } from '../hooks/useColorScheme'
 import type { MouthRef } from '../hooks/useLipSync'
 import type { VrmSource } from '../types'
@@ -15,7 +15,7 @@ interface VRMCanvasProps {
   // null のときはモデル無しの空シーンを描画する（背景・ライト・グリッドのみ）。
   source: VrmSource | null
   onError: (message: string) => void
-  pose?: PosePresetId
+  pose?: PoseSource | null
   // 吹き出しに出すテキスト。null のときは吹き出しを描画しない。
   speechText: string | null
   currentIndex?: number | null
@@ -27,6 +27,7 @@ interface VRMCanvasProps {
   onNext?: () => void
   onLoadStart?: () => void
   onLoaded?: () => void
+  heightClassName?: string
 }
 
 const SCENE_COLORS = {
@@ -192,6 +193,7 @@ export function VRMCanvas({
   onNext = () => {},
   onLoadStart,
   onLoaded,
+  heightClassName = 'h-[420px]',
 }: VRMCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const colorScheme = useColorScheme()
@@ -222,7 +224,7 @@ export function VRMCanvas({
         fullscreen ? 'h-full min-h-0 rounded-none' : 'rounded-lg'
       }`}
     >
-      <div className={fullscreen ? 'h-full min-h-0 w-full' : 'h-[420px] w-full'}>
+      <div className={fullscreen ? 'h-full min-h-0 w-full' : `${heightClassName} w-full`}>
         <Canvas
           camera={{ position: [0, 1.35, 2.2], fov: 28 }}
           // 高 DPI 端末でも上限を 1.5 にして描画コストを抑える。

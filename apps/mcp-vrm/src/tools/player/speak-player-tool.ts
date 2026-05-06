@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 import { getVrmModelUrl } from '../../vrm-http.js'
+import { isBuiltinPoseResourceId } from '../pose-registry/types.js'
 import { registerAppToolIfEnabled } from '../registration.js'
 import type { ToolDeps } from '../types.js'
 import { createErrorResponse } from '../utils.js'
@@ -32,7 +33,7 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
     {
       title: 'Speak Player',
       description:
-        'Creates a TTS player session UI. Provide segments [{ text, pose?, speedScale? }] and an optional modelId (falls back to the registered default; call list_vrms to discover IDs). The speaker is taken from the VRM model. Returns viewUUID. For simple playback without UI, use tts_speak instead.',
+        'Creates a TTS player session UI. Provide segments [{ text, pose?, speedScale? }] and an optional modelId (falls back to the registered default; call list_vrms to discover IDs and pose names). The speaker is taken from the VRM model. Returns viewUUID. For simple playback without UI, use tts_speak instead.',
       inputSchema: {
         modelId: z
           .string()
@@ -42,7 +43,12 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
           .array(
             z.object({
               text: z.string().describe('Text spoken in this segment.'),
-              pose: z.string().optional().describe('Pose preset ID (e.g. "idle", "wave", "bow"). Defaults to "idle".'),
+              pose: z
+                .string()
+                .optional()
+                .describe(
+                  'Pose name from list_vrms vrms[].poses[].name, or legacy preset ID (idle, wave, bow). Defaults to idle.'
+                ),
               speedScale: z.number().optional().describe('Playback speed for this segment.'),
             })
           )
@@ -165,6 +171,13 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
                   name: model.name,
                   speakerId: model.speakerId,
                   vrmUrl: getVrmModelUrl(config, model.id),
+                  poses: (model.poses ?? []).flatMap((attachment) => {
+                    if (isBuiltinPoseResourceId(attachment.poseId)) {
+                      return [{ id: attachment.poseId, name: attachment.name, loop: true }]
+                    }
+                    const pose = runtime.poseRegistry.get(attachment.poseId)
+                    return pose ? [{ id: attachment.poseId, name: attachment.name, loop: pose.loop }] : []
+                  }),
                 },
               }
             : {}),
