@@ -27,7 +27,7 @@
   },
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "build": "tsgo",
     "build:tsc": "tsc",
     "build:clean": "rm -rf dist && pnpm build",

@@ -1,14 +1,15 @@
 import { Auth } from '@supabase/auth-ui-react'
 import { ThemeSupa } from '@supabase/auth-ui-shared'
-import { useEffect, useState } from 'react'
-import { supabase, isLocalMode, localAuthServerUrl } from './supabase'
 import type { Session } from '@supabase/supabase-js'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { isLocalMode, localAuthServerUrl, supabase } from './supabase'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [redirectUri, setRedirectUri] = useState<string | null>(null)
   const [state, setState] = useState<string | null>(null)
+  const localCallbackHandledRef = useRef(false)
 
   useEffect(() => {
     // URL パラメータから redirect_uri と state を取得
@@ -44,7 +45,9 @@ function App() {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setLoading(false)
     })
@@ -52,32 +55,35 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  const redirectWithToken = useCallback(
+    (accessToken: string, expiresIn: number) => {
+      const targetRedirectUri = redirectUri || sessionStorage.getItem('oauth_redirect_uri')
+      const targetState = state || sessionStorage.getItem('oauth_state')
+
+      if (targetRedirectUri) {
+        const url = new URL(targetRedirectUri)
+        url.searchParams.set('access_token', accessToken)
+        url.searchParams.set('token_type', 'bearer')
+        url.searchParams.set('expires_in', String(expiresIn))
+        if (targetState) {
+          url.searchParams.set('state', targetState)
+        }
+
+        sessionStorage.removeItem('oauth_redirect_uri')
+        sessionStorage.removeItem('oauth_state')
+
+        window.location.href = url.toString()
+      }
+    },
+    [redirectUri, state]
+  )
+
   // Supabase ログイン成功後、リダイレクト
   useEffect(() => {
     if (!isLocalMode && session && redirectUri) {
       redirectWithToken(session.access_token, session.expires_in || 3600)
     }
-  }, [session, redirectUri])
-
-  const redirectWithToken = (accessToken: string, expiresIn: number) => {
-    const targetRedirectUri = redirectUri || sessionStorage.getItem('oauth_redirect_uri')
-    const targetState = state || sessionStorage.getItem('oauth_state')
-
-    if (targetRedirectUri) {
-      const url = new URL(targetRedirectUri)
-      url.searchParams.set('access_token', accessToken)
-      url.searchParams.set('token_type', 'bearer')
-      url.searchParams.set('expires_in', String(expiresIn))
-      if (targetState) {
-        url.searchParams.set('state', targetState)
-      }
-
-      sessionStorage.removeItem('oauth_redirect_uri')
-      sessionStorage.removeItem('oauth_state')
-
-      window.location.href = url.toString()
-    }
-  }
+  }, [session, redirectUri, redirectWithToken])
 
   // ローカルモード: ダミーログイン
   const handleLocalLogin = async () => {
@@ -86,14 +92,14 @@ function App() {
 
       // auth-server.js の /authorize エンドポイントを呼び出し
       // 実際には PKCE フローを使うべきだが、デモ用に簡略化
-      const callbackUrl = window.location.origin + window.location.pathname + '?local_callback=1'
-      const authUrl = `${localAuthServerUrl}/authorize?` + new URLSearchParams({
+      const callbackUrl = `${window.location.origin + window.location.pathname}?local_callback=1`
+      const authUrl = `${localAuthServerUrl}/authorize?${new URLSearchParams({
         client_id: 'demo-client',
         redirect_uri: callbackUrl,
         response_type: 'code',
         scope: 'mcp:tools mcp:resources',
         state: state || 'demo',
-      })
+      })}`
 
       window.location.href = authUrl
     } catch (error) {
@@ -104,11 +110,14 @@ function App() {
 
   // ローカルコールバック処理
   useEffect(() => {
+    if (localCallbackHandledRef.current) return
+
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const isLocalCallback = params.get('local_callback')
 
     if (isLocalMode && code && isLocalCallback) {
+      localCallbackHandledRef.current = true
       // 認可コードをトークンに交換
       fetch(`${localAuthServerUrl}/token`, {
         method: 'POST',
@@ -119,15 +128,15 @@ function App() {
           code_verifier: 'demo-verifier',
         }),
       })
-        .then(res => res.json())
-        .then(data => {
+        .then((res) => res.json())
+        .then((data) => {
           if (data.access_token) {
             redirectWithToken(data.access_token, data.expires_in || 3600)
           }
         })
         .catch(console.error)
     }
-  }, [])
+  }, [redirectWithToken])
 
   if (loading) {
     return (
@@ -147,10 +156,11 @@ function App() {
           <h1 style={styles.title}>✅ ログイン済み</h1>
           <p style={styles.text}>{session.user.email}</p>
           <p style={styles.tokenBox}>
-            <strong>Access Token:</strong><br />
+            <strong>Access Token:</strong>
+            <br />
             <code style={styles.code}>{session.access_token.substring(0, 50)}...</code>
           </p>
-          <button style={styles.button} onClick={() => supabase.auth.signOut()}>
+          <button type="button" style={styles.button} onClick={() => supabase.auth.signOut()}>
             ログアウト
           </button>
         </div>
@@ -164,9 +174,7 @@ function App() {
       <div style={styles.container}>
         <div style={styles.card}>
           <h1 style={styles.title}>🔐 MCP Auth (Local)</h1>
-          <p style={styles.subtitle}>
-            ローカル開発用認証サーバーを使用しています
-          </p>
+          <p style={styles.subtitle}>ローカル開発用認証サーバーを使用しています</p>
           <p style={styles.info}>
             <strong>Auth Server:</strong> {localAuthServerUrl}
           </p>
@@ -175,12 +183,10 @@ function App() {
               <strong>Redirect to:</strong> {redirectUri}
             </p>
           )}
-          <button style={styles.button} onClick={handleLocalLogin}>
+          <button type="button" style={styles.button} onClick={handleLocalLogin}>
             🚀 ログイン (デモユーザー)
           </button>
-          <p style={styles.hint}>
-            ※ 開発用のダミー認証です。本番では Supabase を使用してください。
-          </p>
+          <p style={styles.hint}>※ 開発用のダミー認証です。本番では Supabase を使用してください。</p>
         </div>
       </div>
     )

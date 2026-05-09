@@ -18,11 +18,7 @@ function getRemoteJwkSet(jwksUri: string): ReturnType<typeof createRemoteJWKSet>
   return jwks
 }
 
-export async function verifyAccessToken(
-  token: string,
-  jwksUri: string,
-  issuer?: string
-): Promise<AuthInfo> {
+export async function verifyAccessToken(token: string, jwksUri: string, issuer?: string): Promise<AuthInfo> {
   const JWKS = getRemoteJwkSet(jwksUri)
 
   try {
@@ -37,8 +33,6 @@ export async function verifyAccessToken(
       expiresAt: payload.exp,
     }
   } catch (error) {
-    throw new Error(
-      `Token verification failed: ${error instanceof Error ? error.message : String(error)}`
-    )
+    throw new Error(`Token verification failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }

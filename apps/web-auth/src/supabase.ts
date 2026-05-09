@@ -9,7 +9,9 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
 if (!isLocalMode && (!supabaseUrl || !supabaseAnonKey)) {
-  console.warn('Supabase credentials not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or use VITE_AUTH_MODE=local')
+  console.warn(
+    'Supabase credentials not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or use VITE_AUTH_MODE=local'
+  )
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
