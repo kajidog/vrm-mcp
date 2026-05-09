@@ -1,0 +1,16 @@
+.git
+.agents
+.claude
+.codex
+.vscode
+node_modules
+dist
+tmp
+.env
+.env.*
+.ttsrc.json
+.tts-player-cache
+tts-player-exports
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

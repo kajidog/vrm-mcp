@@ -1,0 +1,21 @@
+services:
+  mcp:
+    environment:
+      MCP_OAUTH_ENABLED: "true"
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://localhost:3000}
+      MCP_AUTH_SERVER_URL: ${MCP_AUTH_SERVER_URL}
+      MCP_JWKS_URI: ${MCP_JWKS_URI}
+      MCP_ISSUER: ${MCP_ISSUER:-}
+      MCP_RESOURCE_NAME: ${MCP_RESOURCE_NAME:-VRM MCP Server}
+
+  web-auth:
+    build:
+      context: .
+      target: dev
+    command: pnpm --filter @kajidog/mcp-web-auth dev --host 0.0.0.0
+    environment:
+      VITE_AUTH_MODE: supabase
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    ports:
+      - "${WEB_AUTH_PORT:-5173}:5173"

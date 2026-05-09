@@ -17,8 +17,44 @@
 ## クイックスタート
 
 ```bash
-pnpm -r i
-pnpm -r dev
+pnpm i
+pnpm dev
+```
+
+## Docker Compose で起動
+
+通常の HTTP モード:
+
+```bash
+docker compose up --build
+```
+
+ローカル認証つき HTTP モード:
+
+```bash
+docker compose -f compose.yaml -f compose.auth.yaml up --build
+```
+
+Supabase 認証つき HTTP モード:
+
+```bash
+MCP_AUTH_SERVER_URL=https://<project-ref>.supabase.co/auth/v1 \
+MCP_JWKS_URI=https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json \
+MCP_ISSUER=https://<project-ref>.supabase.co/auth/v1 \
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co \
+VITE_SUPABASE_ANON_KEY=<your-anon-key> \
+docker compose -f compose.yaml -f compose.supabase.yaml up --build
+```
+
+- MCP エンドポイント: `http://localhost:3000/mcp`
+- ヘルスチェック: `http://localhost:3000/health`
+- 認証つき起動時の Auth UI: `http://localhost:5173`
+- ローカル認証つき起動時の開発用 Auth Server: `http://localhost:3001`
+
+既定ではホスト側の VOICEVOX Engine を `http://host.docker.internal:50021` として参照します。別の URL を使う場合は `.env` かコマンドラインで `TTS_BASE_URL` を指定してください。
+
+```bash
+TTS_BASE_URL=http://192.168.1.50:50021 docker compose up --build
 ```
 
 ## MCPツール一覧
