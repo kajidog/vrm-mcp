@@ -96,26 +96,36 @@ function applyPoint(vrm: VRM, _t: number): void {
 
 function applyThink(vrm: VRM, t: number): void {
   resetBones(vrm)
-  setRot(vrm, VRMHumanBoneName.LeftUpperArm, 0, 0, ARM_DOWN_Z)
-  // 右腕を少し前へ + 肘を深く曲げて、手を顎付近へ。
-  setRot(vrm, VRMHumanBoneName.RightUpperArm, Math.PI * 0.2, 0, -Math.PI * 0.45)
-  setRot(vrm, VRMHumanBoneName.RightLowerArm, 0, -1.6, 0)
-  setRot(vrm, VRMHumanBoneName.RightHand, 0, 0, -0.3)
+  setRot(vrm, VRMHumanBoneName.RightShoulder, 0.508, -0.262, 0.058)
+  setRot(vrm, VRMHumanBoneName.RightUpperArm, -0.082, 0.688, -1.102)
+  setRot(vrm, VRMHumanBoneName.RightLowerArm, -0.342, 2.288, 0.318)
+  setRot(vrm, VRMHumanBoneName.RightHand, 0.838, 0.198, -0.722)
+
+  setRot(vrm, VRMHumanBoneName.LeftShoulder, 0.228, 0.128, 0.128)
+  setRot(vrm, VRMHumanBoneName.LeftUpperArm, 0.428, 0.908, ARM_DOWN_Z)
+  setRot(vrm, VRMHumanBoneName.LeftUpperArm, 0.428, 0.908, 0.818)
+  setRot(vrm, VRMHumanBoneName.LeftLowerArm, -0.122, 0.418, 1.608)
+  setRot(vrm, VRMHumanBoneName.LeftHand, -1.182, 0.378, 0.878)
+
   // 軽く首を前&横に傾げる（X- が前傾）。微小揺らぎで生っぽくする。
   const tilt = 0.1 + Math.sin(t * Math.PI * 0.6) * 0.03
-  setRot(vrm, VRMHumanBoneName.Neck, -0.05, 0, tilt)
-  setRot(vrm, VRMHumanBoneName.Head, -0.05, 0, tilt)
+  setRot(vrm, VRMHumanBoneName.Neck, 0.048, -0.272, tilt)
+  setRot(vrm, VRMHumanBoneName.Head, -0.152, 0.178, tilt)
+  setRot(vrm, VRMHumanBoneName.Chest, 0, 0.168, 0.078)
+  setRot(vrm, VRMHumanBoneName.Spine, 0, 0, -0.022)
 }
 
 function applyCheer(vrm: VRM, t: number): void {
   resetBones(vrm)
   // 両腕を万歳。小さく上下に揺らす。
   const bounce = Math.sin(t * Math.PI * 4) * 0.08
-  setRot(vrm, VRMHumanBoneName.LeftUpperArm, 0, 0, Math.PI * 0.95 + bounce)
-  setRot(vrm, VRMHumanBoneName.RightUpperArm, 0, 0, -Math.PI * 0.95 - bounce)
+  setRot(vrm, VRMHumanBoneName.LeftUpperArm, 0, 0, Math.PI * 0.3 + bounce)
+  setRot(vrm, VRMHumanBoneName.RightUpperArm, 0, 0, -Math.PI * 0.3 - bounce)
   setRot(vrm, VRMHumanBoneName.LeftLowerArm, 0, 0.2, 0)
   setRot(vrm, VRMHumanBoneName.RightLowerArm, 0, -0.2, 0)
-  setRot(vrm, VRMHumanBoneName.Head, -0.1, 0, 0)
+  const tilt = 0.1 + Math.sin(t * Math.PI * 0.6) * 0.03
+  setRot(vrm, VRMHumanBoneName.Neck, 0.048, -0.272, tilt)
+  setRot(vrm, VRMHumanBoneName.Head, -0.152, 0.178, tilt)
 }
 
 export interface PosePreset {

@@ -2,7 +2,15 @@ import { type VRM, VRMHumanBoneName, VRMLoaderPlugin, VRMUtils } from '@pixiv/th
 import { type VRMAnimation, VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef, useState } from 'react'
-import { type AnimationAction, AnimationMixer, LoopOnce, LoopRepeat, Vector3 } from 'three'
+import {
+  type AnimationAction,
+  AnimationMixer,
+  LoopOnce,
+  LoopRepeat,
+  type Object3D,
+  type Quaternion,
+  Vector3,
+} from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DEFAULT_POSE_ID, POSE_PRESETS } from '~/features/poses/presets'
 import type { PoseSource } from '~/features/poses/types'
@@ -23,6 +31,8 @@ interface VRMSceneProps {
   expression?: { name: string; weight: number } | null
   // 再生中音声に対するリップシンク値。useLipSync が in-place で更新する。
   mouthRef?: MouthRef
+  // 自動瞬き。OFF のときは blink 系表情へは何も書き込まない。
+  blinkEnabled?: boolean
   // VRM ロード完了後、Canvas へ「キャラ上半身付近の y」を通知する。
   onCenterReady?: (y: number) => void
   // VRM ロード完了後、Canvas へ「頭ボーンのワールド座標」を通知する。
@@ -30,6 +40,38 @@ interface VRMSceneProps {
   onExpressionsReady?: (names: string[]) => void
   onLoadStart?: () => void
   onLoaded?: () => void
+}
+
+// 一回の瞬きにかける時間（秒）。閉じ→開きで均等に消費する。
+const BLINK_DURATION = 0.16
+// 次の瞬きまでのインターバル下限／上限（秒）。
+const BLINK_INTERVAL_MIN = 2.5
+const BLINK_INTERVAL_MAX = 5.5
+
+interface BlinkState {
+  // 次の瞬き開始までの待ち時間。
+  nextAt: number
+  // 瞬き中の経過時間。null なら待機中。
+  progress: number | null
+}
+
+function nextBlinkInterval(): number {
+  return BLINK_INTERVAL_MIN + Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN)
+}
+
+// ポーズ切替時のクロスブレンド秒数。短すぎるとカクつき、長すぎると次の動きに遅延が乗る。
+const POSE_TRANSITION_DURATION = 0.35
+
+interface PoseTransition {
+  // 経過秒。duration 到達で完了。
+  elapsed: number
+  duration: number
+  // 切替前のヒューマノイドボーン姿勢スナップショット（ノード参照→quaternion）。
+  from: Map<Object3D, Quaternion>
+}
+
+function easeInOutQuad(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
 }
 
 /**
@@ -42,6 +84,7 @@ export function VRMScene({
   pose,
   expression,
   mouthRef,
+  blinkEnabled = true,
   onCenterReady,
   onHeadReady,
   onExpressionsReady,
@@ -56,11 +99,19 @@ export function VRMScene({
   // pose は ref に写してから useFrame で参照する（レンダ越しに最新値を拾うため）。
   const poseRef = useRef<PoseSource>(pose ?? DEFAULT_POSE_SOURCE)
   const expressionRef = useRef<{ name: string; weight: number } | null>(expression ?? null)
+  const blinkEnabledRef = useRef(blinkEnabled)
+  const blinkStateRef = useRef<BlinkState>({ nextAt: nextBlinkInterval(), progress: null })
   const vrmaCacheRef = useRef<Map<string, Promise<VRMAnimation>>>(new Map())
   const mixerRef = useRef<AnimationMixer | null>(null)
   const actionRef = useRef<AnimationAction | null>(null)
   const activeVrmaKeyRef = useRef<string | null>(null)
   const [loadedVrmaKey, setLoadedVrmaKey] = useState<string | null>(null)
+  // 直近に切替えたポーズの id。同 id 再適用時には遷移を起動しない。
+  const lastPoseIdRef = useRef<string | null>(null)
+  const poseTransitionRef = useRef<PoseTransition | null>(null)
+  // ポーズ effect が「同じ pose 識別子」と判定するときも、VRM 自体が差し変わっていれば
+  // 旧モデルのボーンノードを参照したスナップショットを残さないために再起動する。
+  const lastVrmRef = useRef<VRM | null>(null)
 
   useEffect(() => {
     poseRef.current = pose ?? DEFAULT_POSE_SOURCE
@@ -69,6 +120,14 @@ export function VRMScene({
   useEffect(() => {
     expressionRef.current = expression ?? null
   }, [expression])
+
+  useEffect(() => {
+    blinkEnabledRef.current = blinkEnabled
+    if (!blinkEnabled) {
+      // 即座に開いた状態へ戻す。次の有効化時は新しい間隔から再開する。
+      blinkStateRef.current = { nextAt: nextBlinkInterval(), progress: null }
+    }
+  }, [blinkEnabled])
 
   // onError / onCenterReady を ref 経由で参照し、コールバック差し替えで useEffect が再実行されないようにする。
   const onErrorRef = useRef(onError)
@@ -235,6 +294,25 @@ export function VRMScene({
     const poseSource = pose ?? DEFAULT_POSE_SOURCE
     poseRef.current = poseSource
 
+    // モデルが差し替わった場合は旧スナップショットを破棄して比較 id もリセット。
+    if (lastVrmRef.current !== vrm) {
+      poseTransitionRef.current = null
+      lastPoseIdRef.current = null
+      lastVrmRef.current = vrm
+    }
+
+    // ポーズ id が変化した時だけ、現在のヒューマノイドボーン姿勢をスナップショットして
+    // 遷移を起動する。これにより useFrame 側で旧姿勢→新姿勢を slerp で滑らかに繋げる。
+    if (lastPoseIdRef.current !== poseSource.id) {
+      const snapshot = new Map<Object3D, Quaternion>()
+      for (const name of Object.values(VRMHumanBoneName)) {
+        const node = vrm.humanoid.getNormalizedBoneNode(name)
+        if (node) snapshot.set(node, node.quaternion.clone())
+      }
+      poseTransitionRef.current = { elapsed: 0, duration: POSE_TRANSITION_DURATION, from: snapshot }
+      lastPoseIdRef.current = poseSource.id
+    }
+
     if (poseSource.kind !== 'vrma') {
       mixerRef.current?.stopAllAction()
       actionRef.current = null
@@ -301,6 +379,24 @@ export function VRMScene({
     } else if (loadedVrmaKey === activeVrmaKeyRef.current) {
       mixerRef.current?.update(delta)
     }
+
+    // 切替直後の数フレームは、適用済みボーン（=新ポーズ）を旧ポーズへ slerp で寄せ、
+    // duration をかけて 0 に近づけることで滑らかに遷移する。
+    // slerp(to, from, 1-t) = slerp(from, to, t) なのでイージング後の 1-t を渡す。
+    const transition = poseTransitionRef.current
+    if (transition) {
+      transition.elapsed += delta
+      const rawT = Math.min(1, transition.elapsed / transition.duration)
+      const eased = easeInOutQuad(rawT)
+      const blendBack = 1 - eased
+      if (rawT >= 1) {
+        poseTransitionRef.current = null
+      } else {
+        for (const [node, fromQuat] of transition.from) {
+          node.quaternion.slerp(fromQuat, blendBack)
+        }
+      }
+    }
     const em = vrm.expressionManager
     const expression = expressionRef.current
     if (em) {
@@ -319,6 +415,25 @@ export function VRMScene({
       em.setValue('ee', mouth.ee)
       em.setValue('oh', mouth.oh)
     }
+    if (em && blinkEnabledRef.current) {
+      const blinkState = blinkStateRef.current
+      if (blinkState.progress === null) {
+        blinkState.nextAt -= delta
+        if (blinkState.nextAt <= 0) blinkState.progress = 0
+      }
+      if (blinkState.progress !== null) {
+        blinkState.progress += delta
+        const t = Math.min(1, blinkState.progress / BLINK_DURATION)
+        // 0→1→0 の三角波。中間で完全に閉じる。
+        const weight = t < 0.5 ? t * 2 : (1 - t) * 2
+        applyBlinkWeight(em, weight)
+        if (blinkState.progress >= BLINK_DURATION) {
+          applyBlinkWeight(em, 0)
+          blinkState.progress = null
+          blinkState.nextAt = nextBlinkInterval()
+        }
+      }
+    }
     vrm.update(delta)
   })
 
@@ -326,6 +441,18 @@ export function VRMScene({
 
   // VRM のルートが原点(0,0,0)に立つので、足元をグリッドに合わせて少し下げる。
   return <primitive object={vrm.scene} position={[0, -1, 0]} />
+}
+
+// VRM1 は preset 名 "blink"（両目）を持つ。VRM0 由来や独自命名のモデルでは
+// 片目だけが定義されていることもあるので、両目→片目のフォールバックを両方試す。
+type BlinkEm = NonNullable<VRM['expressionManager']>
+function applyBlinkWeight(em: BlinkEm, weight: number) {
+  if (em.getExpression('blink')) {
+    em.setValue('blink', weight)
+    return
+  }
+  if (em.getExpression('blinkLeft')) em.setValue('blinkLeft', weight)
+  if (em.getExpression('blinkRight')) em.setValue('blinkRight', weight)
 }
 
 function getVrmaAnimation(

@@ -4,6 +4,7 @@ import { type ComponentRef, useEffect, useRef, useState } from 'react'
 import type { PoseSource } from '~/features/poses/types'
 import { useColorScheme } from '../hooks/useColorScheme'
 import type { MouthRef } from '../hooks/useLipSync'
+import { useRenderSettings } from '../hooks/useRenderSettings'
 import type { VrmSource } from '../types'
 import { VRMScene } from './VRMScene'
 
@@ -204,6 +205,7 @@ export function VRMCanvas({
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const colorScheme = useColorScheme()
   const colors = SCENE_COLORS[colorScheme]
+  const { settings: renderSettings } = useRenderSettings()
   // VRMScene からセンタリング情報（上半身 y）を受け取って、カメラ追従と吹き出し位置に流す。
   const [centerY, setCenterY] = useState<number | null>(null)
   const [headPosition, setHeadPosition] = useState<[number, number, number] | null>(null)
@@ -233,8 +235,8 @@ export function VRMCanvas({
       <div className={fullscreen ? 'h-full min-h-0 w-full' : `${heightClassName} w-full`}>
         <Canvas
           camera={{ position: [0, 1.35, 2.2], fov: 28 }}
-          // 高 DPI 端末でも上限を 1.5 にして描画コストを抑える。
-          dpr={[1, 1.5]}
+          // 設定の dprMax で上限を切り替え。1.5 を超えると描画負荷が上がるが見栄えは向上する。
+          dpr={[1, renderSettings.dprMax]}
           gl={{
             antialias: false,
             powerPreference: 'high-performance',
@@ -252,6 +254,7 @@ export function VRMCanvas({
               pose={pose}
               expression={expression}
               mouthRef={mouthRef}
+              blinkEnabled={renderSettings.blinkEnabled}
               onCenterReady={setCenterY}
               onHeadReady={setHeadPosition}
               onExpressionsReady={onExpressionsReady}

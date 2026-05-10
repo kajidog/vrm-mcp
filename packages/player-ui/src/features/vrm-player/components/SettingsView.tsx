@@ -1,5 +1,6 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import { useEffect, useState } from 'react'
+import { DPR_OPTIONS, useRenderSettings } from '../hooks/useRenderSettings'
 import {
   type PlayerSettings,
   fetchPlayerSettingsOnServer,
@@ -23,6 +24,7 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
   const [values, setValues] = useState<PlayerSettings>({ speedScale: 1, autoPlay: true, usePublicVrms: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { settings: renderSettings, update: updateRenderSettings } = useRenderSettings()
 
   useEffect(() => {
     let cancelled = false
@@ -154,6 +156,26 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
           </button>
         </div>
       </div>
+
+      <div className="rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-4">
+        <div className="mb-3 text-xs font-semibold text-[var(--ui-text)]">表示</div>
+        <div className="space-y-3">
+          <SettingSelect
+            label="解像度"
+            description="高くするほど精細に見えますが描画負荷が上がります。"
+            value={renderSettings.dprMax}
+            options={DPR_OPTIONS}
+            onChange={(dprMax) => updateRenderSettings({ dprMax })}
+          />
+          <SettingToggle
+            label="瞬き"
+            checked={renderSettings.blinkEnabled}
+            defaultValue={true}
+            onChange={(blinkEnabled) => updateRenderSettings({ blinkEnabled })}
+          />
+        </div>
+      </div>
+
       <button
         type="button"
         onClick={onOpenPoses}
@@ -188,6 +210,44 @@ function SettingToggle({
         onChange={(event) => onChange(event.target.checked)}
         className="h-4 w-4 accent-[var(--ui-accent)]"
       />
+    </label>
+  )
+}
+
+function SettingSelect<T extends number | string>({
+  label,
+  description,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  description?: string
+  value: T
+  options: Array<{ value: T; label: string }>
+  onChange: (value: T) => void
+}) {
+  return (
+    <label className="block text-xs text-[var(--ui-text)]">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="font-semibold">{label}</span>
+        {description ? <span className="text-[var(--ui-text-secondary)]">{description}</span> : null}
+      </div>
+      <select
+        value={String(value)}
+        onChange={(event) => {
+          const raw = event.target.value
+          const next = typeof options[0]?.value === 'number' ? (Number(raw) as T) : (raw as T)
+          onChange(next)
+        }}
+        className="w-full rounded-md border border-[var(--ui-border)] bg-[var(--ui-button-bg)] px-2 py-1 text-xs text-[var(--ui-text)]"
+      >
+        {options.map((option) => (
+          <option key={String(option.value)} value={String(option.value)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   )
 }
