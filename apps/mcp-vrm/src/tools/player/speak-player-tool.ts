@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 import { getVrmModelUrl } from '../../vrm-http.js'
+import { resolveUserId } from '../auth-context.js'
 import { EMOTION_NAMES, type EmotionBinding, type EmotionName, normalizeEmotion } from '../emotions.js'
 import { EMOTION_GUIDE, getRegistrationGuide } from '../guidance.js'
 import { isBuiltinPoseResourceId } from '../pose-registry/types.js'
 import { registerAppToolIfEnabled } from '../registration.js'
-import type { ToolDeps } from '../types.js'
+import type { ToolDeps, ToolHandlerExtra } from '../types.js'
 import { createErrorResponse } from '../utils.js'
 import { playerResourceUri } from './runtime.js'
 import type { PlayerRuntime } from './runtime.js'
@@ -66,15 +67,20 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
       },
       _meta: { ui: { resourceUri: playerResourceUri } },
     },
-    async ({
-      modelId,
-      segments,
-    }: {
-      modelId?: string
-      segments: SegmentInput[]
-    }): Promise<CallToolResult> => {
+    async (
+      {
+        modelId,
+        segments,
+      }: {
+        modelId?: string
+        segments: SegmentInput[]
+      },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
-        const model = resolveVrmModel(runtime, modelId)
+        const userId = resolveUserId(extra)
+        const settings = runtime.playerSettings.applyDefaults({}, userId)
+        const model = resolveVrmModel(runtime, userId, settings.usePublicVrms, modelId)
         if (!model) {
           const structured = {
             action: 'openModelManager',
@@ -117,9 +123,10 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
         // 音声バイナリはこのレスポンスには含めず、UI 側が viewUUID で
         // `_get_player_audio_for_player` を呼んで取得する（1MB 制限回避）。
         const synthesized = await Promise.all(
-          baseSegments.map(async (s) => {
+          baseSegments.map(async (s, index) => {
             try {
               const result = await runtime.synthesizeWithCache({
+                userId,
                 text: s.text,
                 speaker: s.speaker,
                 speedScale: s.speedScale,
@@ -131,8 +138,9 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
                 audioQuery: result.audioQuery,
               }
             } catch (error) {
-              console.warn('[speak_player] synthesize failed for segment:', error)
-              return {}
+              throw new Error(
+                `segments[${index}] の音声合成に失敗しました: ${error instanceof Error ? error.message : String(error)}`
+              )
             }
           })
         )
@@ -179,7 +187,7 @@ export function registerSpeakPlayerTool(deps: ToolDeps, runtime: PlayerRuntime):
         }))
         const structured: Record<string, unknown> = {
           viewUUID,
-          autoPlay: runtime.playerSettings.applyDefaults({}).autoPlay,
+          autoPlay: settings.autoPlay,
           segments: uiSegments,
           audioMimeType: 'audio/wav',
           engineId: engine.id,
@@ -229,11 +237,11 @@ function resolveEmotionBinding(
   return bindings?.find((binding) => binding.emotion === emotion)
 }
 
-function resolveVrmModel(runtime: PlayerRuntime, modelId: string | undefined) {
+function resolveVrmModel(runtime: PlayerRuntime, userId: string, usePublicVrms: boolean, modelId: string | undefined) {
   if (modelId) {
-    const model = runtime.vrmRegistry.get(modelId)
+    const model = runtime.vrmRegistry.getVisible(modelId, { userId, usePublicVrms })
     if (!model) throw new Error(`VRM model not found: ${modelId}`)
     return model
   }
-  return runtime.vrmRegistry.getDefault()
+  return runtime.vrmRegistry.getDefault(userId)
 }

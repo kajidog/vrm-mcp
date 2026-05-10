@@ -2,7 +2,7 @@
 
 VRM MCP サーバーは HTTP モードで OAuth JWT Bearer 認証を有効化できます。認証を有効にすると `/mcp`, `/vrms/:fileName`, `/poses/:fileName` が `Authorization: Bearer <JWT>` 必須になります。`/health` と `/.well-known/oauth-protected-resource` は認証不要です。
 
-認証後のユーザー別 VRM モデル管理、ユーザー別ストレージ分離、管理 UI はまだ対象外です。
+認証後は、VRM モデル・カスタムポーズ・プレイヤー設定がユーザーごとに分離されます。VRM は登録者が公開すると他ユーザーも利用できますが、編集・削除は登録者のみ可能です。公開 VRM を利用するかどうかはプレイヤー設定でユーザーごとに切り替えできます。
 
 ## ローカル開発
 

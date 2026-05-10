@@ -5,6 +5,10 @@ import type { ServerConfig } from '../config.js'
 // ツールハンドラーのextraパラメータ用の型定義
 export interface ToolHandlerExtra {
   sessionId?: string
+  authInfo?: {
+    clientId?: string
+    extra?: Record<string, unknown>
+  }
 }
 
 // 各 register*Tools に渡す共通依存オブジェクト

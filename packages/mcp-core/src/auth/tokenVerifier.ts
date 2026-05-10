@@ -5,6 +5,7 @@ export interface AuthInfo {
   clientId: string
   scopes: string[]
   expiresAt?: number
+  extra?: Record<string, unknown>
 }
 
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
@@ -31,6 +32,9 @@ export async function verifyAccessToken(token: string, jwksUri: string, issuer?:
       clientId: (payload.azp as string) || (payload.client_id as string) || 'unknown',
       scopes: typeof payload.scope === 'string' ? payload.scope.split(' ') : [],
       expiresAt: payload.exp,
+      extra: {
+        sub: payload.sub,
+      },
     }
   } catch (error) {
     throw new Error(`Token verification failed: ${error instanceof Error ? error.message : String(error)}`)

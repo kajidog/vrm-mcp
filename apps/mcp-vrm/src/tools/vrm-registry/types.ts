@@ -3,6 +3,7 @@ import type { ModelPoseAttachment } from '../pose-registry/types.js'
 
 export interface VrmModel {
   id: string
+  ownerUserId: string
   name: string
   speakerId: number
   isDefault: boolean

@@ -5,6 +5,7 @@ interface VrmInfoSectionProps {
   name: string
   speakerId: number | null
   isDefault: boolean
+  isPublic: boolean
   speakers: SpeakerStyle[]
   speakersLoading: boolean
   speakersError: string | null
@@ -16,6 +17,7 @@ interface VrmInfoSectionProps {
   onNameChange: (name: string) => void
   onSpeakerChange: (speakerId: number | null) => void
   onDefaultChange: (isDefault: boolean) => void
+  onPublicChange: (isPublic: boolean) => void
   openFilePicker: () => void
 }
 
@@ -23,6 +25,7 @@ export function VrmInfoSection({
   name,
   speakerId,
   isDefault,
+  isPublic,
   speakers,
   speakersLoading,
   speakersError,
@@ -34,6 +37,7 @@ export function VrmInfoSection({
   onNameChange,
   onSpeakerChange,
   onDefaultChange,
+  onPublicChange,
   openFilePicker,
 }: VrmInfoSectionProps) {
   return (
@@ -88,6 +92,11 @@ export function VrmInfoSection({
       <label className="flex items-center gap-2 text-xs text-[var(--ui-text)] md:col-span-2">
         <input type="checkbox" checked={isDefault} onChange={(e) => onDefaultChange(e.target.checked)} />
         デフォルトのVRMに設定
+      </label>
+
+      <label className="flex items-center gap-2 text-xs text-[var(--ui-text)] md:col-span-2">
+        <input type="checkbox" checked={isPublic} onChange={(e) => onPublicChange(e.target.checked)} />
+        公開して他のユーザーも使えるようにする
       </label>
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ui-text-secondary)] md:col-span-2">

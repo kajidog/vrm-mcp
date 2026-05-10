@@ -16,7 +16,6 @@ export type VrmPlayerLoadingPhase =
   | 'error'
 
 // 解決済みの VRM ソース。url 経由なら src、バイナリ展開済みなら data を持つ。
-// isDefault はモデルエラー時のフォールバック判断に使う。
 export interface VrmSource {
   src?: string
   data?: ArrayBuffer

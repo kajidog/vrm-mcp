@@ -1,6 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 import { getVrmModelUrl } from '../../vrm-http.js'
+import { resolveUserId } from '../auth-context.js'
 import type { EmotionBinding } from '../emotions.js'
 import { EMOTION_NAMES } from '../emotions.js'
 import { DEFAULT_POSE_NAMES, getRegistrationGuide } from '../guidance.js'
@@ -8,7 +9,7 @@ import type { PlayerSettingsStore } from '../player/player-settings-store.js'
 import type { PoseRegistryStore } from '../pose-registry/store.js'
 import { isBuiltinPoseResourceId } from '../pose-registry/types.js'
 import { registerAppToolIfEnabled, registerToolIfEnabled } from '../registration.js'
-import type { ToolDeps } from '../types.js'
+import type { ToolDeps, ToolHandlerExtra } from '../types.js'
 import { createErrorResponse } from '../utils.js'
 import type { VrmRegistryStore } from './store.js'
 import type { VrmModel } from './types.js'
@@ -49,14 +50,16 @@ export function registerVrmPublicTools(
         openWorldHint: false,
       },
     },
-    async (): Promise<CallToolResult> => {
+    async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
+        const visibility = resolveVrmVisibility(playerSettings, extra)
         const health = await ttsClient.checkHealth()
-        const models = registry.list()
-        const defaultModel = registry.getDefault()
-        const effectiveSettings = playerSettings?.applyDefaults({}) ?? {
+        const models = registry.listVisible(visibility)
+        const defaultModel = registry.getDefault(visibility.userId)
+        const effectiveSettings = playerSettings?.applyDefaults({}, visibility.userId) ?? {
           autoPlay: config.autoPlay,
           speedScale: config.defaultSpeedScale,
+          usePublicVrms: true,
         }
         const structured: Record<string, unknown> = {
           engine: {
@@ -112,12 +115,16 @@ export function registerVrmPublicTools(
         openWorldHint: false,
       },
     },
-    async ({ modelId, query }: { modelId?: string; query?: string }): Promise<CallToolResult> => {
+    async (
+      { modelId, query }: { modelId?: string; query?: string },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
-        const models = filterModels(registry.list(), modelId, query).map((model) => ({
+        const visibility = resolveVrmVisibility(playerSettings, extra)
+        const models = filterModels(registry.listVisible(visibility), modelId, query).map((model) => ({
           modelId: model.id,
           name: model.name,
-          isDefault: model.isDefault,
+          isDefault: model.ownerUserId === visibility.userId && model.isDefault,
           poses: resolvePoseNames(model, poseRegistry),
         }))
         const structured: Record<string, unknown> = {
@@ -159,15 +166,22 @@ export function registerVrmPublicTools(
       },
       _meta: { ui: { resourceUri: 'ui://speak-player/player.html' } },
     },
-    async ({
-      modelId,
-      knowsHowToUse,
-    }: {
-      modelId?: string
-      knowsHowToUse?: boolean
-    }): Promise<CallToolResult> => {
+    async (
+      {
+        modelId,
+        knowsHowToUse,
+      }: {
+        modelId?: string
+        knowsHowToUse?: boolean
+      },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
-        if (modelId && !registry.get(modelId)) throw new Error(`VRM model not found: ${modelId}`)
+        const visibility = resolveVrmVisibility(playerSettings, extra)
+        if (modelId) {
+          const model = registry.get(modelId)
+          if (!model || model.ownerUserId !== visibility.userId) throw new Error(`VRM model not found: ${modelId}`)
+        }
         const structured = {
           action: 'openModelManager',
           mode: modelId ? 'edit' : 'register',
@@ -207,13 +221,14 @@ export function registerVrmPublicTools(
         openWorldHint: false,
       },
     },
-    async (): Promise<CallToolResult> => {
+    async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        const entries: PublicVrmEntry[] = registry.list().map((model) => ({
+        const visibility = resolveVrmVisibility(playerSettings, extra)
+        const entries: PublicVrmEntry[] = registry.listVisible(visibility).map((model) => ({
           id: model.id,
           name: model.name,
           speakerId: model.speakerId,
-          isDefault: model.isDefault,
+          isDefault: model.ownerUserId === visibility.userId && model.isDefault,
           vrmUrl: getVrmModelUrl(config, model.id),
           vrmSizeBytes: model.vrmSizeBytes,
           updatedAt: model.updatedAt,
@@ -249,6 +264,12 @@ function filterModels(models: VrmModel[], modelId: string | undefined, query: st
   const needle = query?.trim().toLowerCase()
   if (!needle) return models
   return models.filter((model) => model.id.toLowerCase().includes(needle) || model.name.toLowerCase().includes(needle))
+}
+
+function resolveVrmVisibility(playerSettings: PlayerSettingsStore | undefined, extra: ToolHandlerExtra | undefined) {
+  const userId = resolveUserId(extra)
+  const settings = playerSettings?.applyDefaults({}, userId)
+  return { userId, usePublicVrms: settings?.usePublicVrms ?? true }
 }
 
 function resolvePoseNames(model: VrmModel, poseRegistry: PoseRegistryStore): string[] {

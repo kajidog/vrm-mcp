@@ -15,7 +15,7 @@ interface TransportBarProps {
 }
 
 function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '--:--'
+  if (!Number.isFinite(seconds) || seconds < 0) return '--:--'
   const rounded = Math.floor(seconds)
   const minutes = Math.floor(rounded / 60)
   const rest = rounded % 60

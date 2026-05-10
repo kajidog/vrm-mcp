@@ -53,4 +53,26 @@ describe('PoseRegistryStore', () => {
     expect(reloaded.get('bow_v2')?.loop).toBe(false)
     expect(reloaded.readVrmaBase64('bow_v2')).toBe(SAMPLE_VRMA_BASE64)
   })
+
+  it('ポーズ一覧と更新はユーザーごとに分離される', async () => {
+    const store = createStore()
+    const a = await store.register({
+      ownerUserId: 'user-a',
+      id: 'wave_a',
+      loop: true,
+      vrmaBase64: SAMPLE_VRMA_BASE64,
+    })
+    const b = await store.register({
+      ownerUserId: 'user-b',
+      id: 'wave_b',
+      loop: true,
+      vrmaBase64: SAMPLE_VRMA_BASE64,
+    })
+
+    expect(store.listOwned('user-a').map((pose) => pose.id)).toEqual([a.id])
+    expect(store.listOwned('user-b').map((pose) => pose.id)).toEqual([b.id])
+    expect(() => store.update(a.id, { name: 'blocked' }, 'user-b')).toThrow(/Pose not found/)
+    await expect(store.delete(a.id, 'user-b')).rejects.toThrow(/Pose not found/)
+    expect(store.get(a.id)).toBeDefined()
+  })
 })

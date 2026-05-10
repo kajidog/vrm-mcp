@@ -1,6 +1,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
+import { resolveUserId } from '../auth-context.js'
 import { registerAppToolIfEnabled } from '../registration.js'
+import type { ToolHandlerExtra } from '../types.js'
 import { createErrorResponse } from '../utils.js'
 import type { PlayerUIToolContext } from './context.js'
 
@@ -20,14 +22,15 @@ export function registerPlayerSettingsTools(context: PlayerUIToolContext): void 
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (): Promise<CallToolResult> => {
+    async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
-                overrides: playerSettings.get(),
+                overrides: playerSettings.get(userId),
                 cliDefaults: playerSettings.getCliDefaults(),
               }),
             },
@@ -51,28 +54,38 @@ export function registerPlayerSettingsTools(context: PlayerUIToolContext): void 
         prePhonemeLength: z.number().nullable().optional(),
         postPhonemeLength: z.number().nullable().optional(),
         autoPlay: z.boolean().nullable().optional(),
+        usePublicVrms: z.boolean().nullable().optional(),
         reset: z.boolean().optional(),
       },
       _meta: {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (input: {
-      speedScale?: number | null
-      prePhonemeLength?: number | null
-      postPhonemeLength?: number | null
-      autoPlay?: boolean | null
-      reset?: boolean
-    }): Promise<CallToolResult> => {
+    async (
+      input: {
+        speedScale?: number | null
+        prePhonemeLength?: number | null
+        postPhonemeLength?: number | null
+        autoPlay?: boolean | null
+        usePublicVrms?: boolean | null
+        reset?: boolean
+      },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         const overrides = input.reset
-          ? playerSettings.reset()
-          : playerSettings.set({
-              speedScale: input.speedScale,
-              prePhonemeLength: input.prePhonemeLength,
-              postPhonemeLength: input.postPhonemeLength,
-              autoPlay: input.autoPlay,
-            })
+          ? playerSettings.reset(userId)
+          : playerSettings.set(
+              {
+                speedScale: input.speedScale,
+                prePhonemeLength: input.prePhonemeLength,
+                postPhonemeLength: input.postPhonemeLength,
+                autoPlay: input.autoPlay,
+                usePublicVrms: input.usePublicVrms,
+              },
+              userId
+            )
         return {
           content: [
             {

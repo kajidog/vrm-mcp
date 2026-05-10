@@ -49,6 +49,7 @@ export interface PlayerUIShared {
   playerEngine: TtsEngine
   playerResourceUri: string
   synthesizeWithCache: (input: {
+    userId?: string
     text: string
     speaker: number
     audioQuery?: AudioQuery

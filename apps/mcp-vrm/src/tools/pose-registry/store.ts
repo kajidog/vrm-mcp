@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { ANONYMOUS_USER_ID } from '../auth-context.js'
 import type { PoseResource } from './types.js'
 
 const REGISTRY_FILE_NAME = 'pose-registry.json'
@@ -14,10 +15,15 @@ export interface PoseRegistryStoreOptions {
 }
 
 export interface RegisterPoseInput {
+  ownerUserId?: string
   id: string
   name?: string
   vrmaBase64: string
   loop: boolean
+}
+
+export interface PoseVisibilityOptions {
+  userId: string
 }
 
 export interface UpdatePoseInput {
@@ -49,8 +55,17 @@ export class PoseRegistryStore {
     return [...this.registry.values()].sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
+  listOwned(userId: string): PoseResource[] {
+    return this.list().filter((pose) => pose.ownerUserId === userId)
+  }
+
   get(id: string): PoseResource | undefined {
     return this.registry.get(id)
+  }
+
+  getOwned(id: string, userId: string): PoseResource | undefined {
+    const pose = this.registry.get(id)
+    return pose?.ownerUserId === userId ? pose : undefined
   }
 
   async register(input: RegisterPoseInput): Promise<PoseResource> {
@@ -63,6 +78,7 @@ export class PoseRegistryStore {
     const now = Date.now()
     const pose: PoseResource = {
       id,
+      ownerUserId: normalizeOwnerUserId(input.ownerUserId),
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),
       vrmaFilePath,
       vrmaSizeBytes: buffer.byteLength,
@@ -75,9 +91,10 @@ export class PoseRegistryStore {
     return pose
   }
 
-  update(id: string, fields: UpdatePoseInput): PoseResource {
+  update(id: string, fields: UpdatePoseInput, ownerUserId?: string): PoseResource {
     const existing = this.registry.get(id)
     if (!existing) throw new Error(`Pose not found: ${id}`)
+    assertOwner(existing, ownerUserId)
     const next: PoseResource = {
       ...existing,
       ...(fields.name !== undefined ? { name: fields.name.trim() || undefined } : {}),
@@ -89,9 +106,10 @@ export class PoseRegistryStore {
     return next
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, ownerUserId?: string): Promise<void> {
     const existing = this.registry.get(id)
     if (!existing) return
+    assertOwner(existing, ownerUserId)
     this.registry.delete(id)
     this.scheduleSave()
     try {
@@ -141,7 +159,7 @@ export class PoseRegistryStore {
       for (const entry of parsed.entries) {
         if (!entry || typeof entry.id !== 'string') continue
         if (!existsSync(entry.vrmaFilePath)) continue
-        this.registry.set(entry.id, entry)
+        this.registry.set(entry.id, { ...entry, ownerUserId: normalizeOwnerUserId(entry.ownerUserId) })
       }
     } catch (error) {
       console.warn('Warning: failed to load pose registry, starting empty:', error)
@@ -155,6 +173,15 @@ export class PoseRegistryStore {
     }
     await this.saveToDisk()
   }
+}
+
+function normalizeOwnerUserId(ownerUserId: string | undefined): string {
+  return ownerUserId?.trim() || ANONYMOUS_USER_ID
+}
+
+function assertOwner(pose: PoseResource, ownerUserId: string | undefined): void {
+  if (ownerUserId === undefined) return
+  if (pose.ownerUserId !== ownerUserId) throw new Error(`Pose not found: ${pose.id}`)
 }
 
 export function validatePoseId(value: string): string {

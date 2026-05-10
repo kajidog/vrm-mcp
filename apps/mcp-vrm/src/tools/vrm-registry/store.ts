@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { ANONYMOUS_USER_ID } from '../auth-context.js'
 import { createDefaultBuiltinAttachments } from '../pose-registry/types.js'
 import { extractVrmThumbnail } from './thumbnail.js'
 import type { VrmModel } from './types.js'
@@ -16,6 +17,7 @@ export interface VrmRegistryStoreOptions {
 }
 
 export interface RegisterVrmInput {
+  ownerUserId?: string
   name: string
   speakerId: number
   isDefault?: boolean
@@ -34,11 +36,16 @@ export interface UpdateVrmInput {
   emotionBindings?: VrmModel['emotionBindings']
 }
 
+export interface VrmVisibilityOptions {
+  userId: string
+  usePublicVrms: boolean
+}
+
 /**
  * VRM 登録ストア。メタデータは JSON で永続化、VRM バイナリは個別ファイル保存。
  *
  * 永続化は SessionStateStore と同じく mkdir → atomic rename → デバウンス保存。
- * isDefault は同時に true となるエントリが 1 件以下になるよう排他制御する。
+ * isDefault は所有者ごとに同時に true となるエントリが 1 件になるよう排他制御する。
  */
 export class VrmRegistryStore {
   private readonly registry = new Map<string, VrmModel>()
@@ -68,13 +75,22 @@ export class VrmRegistryStore {
     return [...this.registry.values()].sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
+  listVisible(options: VrmVisibilityOptions): VrmModel[] {
+    return this.list().filter((model) => isVisibleToUser(model, options))
+  }
+
   get(id: string): VrmModel | undefined {
     return this.registry.get(id)
   }
 
-  getDefault(): VrmModel | undefined {
+  getVisible(id: string, options: VrmVisibilityOptions): VrmModel | undefined {
+    const model = this.registry.get(id)
+    return model && isVisibleToUser(model, options) ? model : undefined
+  }
+
+  getDefault(userId?: string): VrmModel | undefined {
     for (const model of this.registry.values()) {
-      if (model.isDefault) return model
+      if (model.isDefault && (userId === undefined || model.ownerUserId === userId)) return model
     }
     return undefined
   }
@@ -88,11 +104,13 @@ export class VrmRegistryStore {
     const thumbnail = extractVrmThumbnail(buffer)
 
     const now = Date.now()
+    const ownerUserId = normalizeOwnerUserId(input.ownerUserId)
     const model: VrmModel = {
       id,
+      ownerUserId,
       name: input.name,
       speakerId: input.speakerId,
-      isDefault: input.isDefault === true,
+      isDefault: input.isDefault === true || !this.hasOwnedModel(ownerUserId),
       isPublic: input.isPublic === true,
       poses: input.poses ?? createDefaultBuiltinAttachments(),
       ...(input.emotionBindings !== undefined ? { emotionBindings: input.emotionBindings } : {}),
@@ -105,17 +123,19 @@ export class VrmRegistryStore {
       updatedAt: now,
     }
 
-    if (model.isDefault) {
-      this.clearDefaultExcept(id)
-    }
     this.registry.set(id, model)
+    if (model.isDefault) {
+      this.clearDefaultExcept(id, model.ownerUserId)
+    }
+    this.ensureDefaultForOwner(model.ownerUserId, model.isDefault ? id : undefined)
     this.scheduleSave()
     return model
   }
 
-  update(id: string, fields: UpdateVrmInput): VrmModel {
+  update(id: string, fields: UpdateVrmInput, ownerUserId?: string): VrmModel {
     const existing = this.registry.get(id)
     if (!existing) throw new Error(`VRM not found: ${id}`)
+    assertOwner(existing, ownerUserId)
 
     const next: VrmModel = {
       ...existing,
@@ -128,17 +148,19 @@ export class VrmRegistryStore {
       updatedAt: Date.now(),
     }
 
-    if (fields.isDefault === true) {
-      this.clearDefaultExcept(id)
-    }
     this.registry.set(id, next)
+    if (fields.isDefault === true) {
+      this.clearDefaultExcept(id, next.ownerUserId)
+    }
+    this.ensureDefaultForOwner(next.ownerUserId, fields.isDefault === true ? id : undefined)
     this.scheduleSave()
-    return next
+    return this.registry.get(id) ?? next
   }
 
-  async replaceBinary(id: string, vrmBase64: string): Promise<VrmModel> {
+  async replaceBinary(id: string, vrmBase64: string, ownerUserId?: string): Promise<VrmModel> {
     const existing = this.registry.get(id)
     if (!existing) throw new Error(`VRM not found: ${id}`)
+    assertOwner(existing, ownerUserId)
 
     const buffer = decodeAndValidateVrmBase64(vrmBase64)
     await this.writeBinaryAtomic(existing.vrmFilePath, buffer)
@@ -156,11 +178,13 @@ export class VrmRegistryStore {
     return next
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, ownerUserId?: string): Promise<void> {
     const existing = this.registry.get(id)
     if (!existing) return
+    assertOwner(existing, ownerUserId)
 
     this.registry.delete(id)
+    this.ensureDefaultForOwner(existing.ownerUserId)
     this.scheduleSave()
 
     try {
@@ -172,8 +196,8 @@ export class VrmRegistryStore {
     }
   }
 
-  setDefault(id: string): VrmModel {
-    return this.update(id, { isDefault: true })
+  setDefault(id: string, ownerUserId?: string): VrmModel {
+    return this.update(id, { isDefault: true }, ownerUserId)
   }
 
   readVrmBase64(id: string): string {
@@ -189,10 +213,37 @@ export class VrmRegistryStore {
   // Internals
   // -------------------------------------------------------------------------
 
-  private clearDefaultExcept(keepId: string): void {
+  private clearDefaultExcept(keepId: string, ownerUserId: string): void {
     for (const [id, model] of this.registry) {
-      if (id !== keepId && model.isDefault) {
+      if (id !== keepId && model.ownerUserId === ownerUserId && model.isDefault) {
         this.registry.set(id, { ...model, isDefault: false, updatedAt: Date.now() })
+      }
+    }
+  }
+
+  private hasOwnedModel(ownerUserId: string): boolean {
+    for (const model of this.registry.values()) {
+      if (model.ownerUserId === ownerUserId) return true
+    }
+    return false
+  }
+
+  private ensureDefaultForOwner(ownerUserId: string, preferredId?: string): void {
+    const owned = [...this.registry.values()].filter((model) => model.ownerUserId === ownerUserId)
+    if (owned.length === 0) return
+
+    const defaults = owned.filter((model) => model.isDefault)
+    const keep =
+      (preferredId ? owned.find((model) => model.id === preferredId) : undefined) ??
+      defaults.sort((a, b) => b.updatedAt - a.updatedAt)[0] ??
+      owned.sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    if (!keep) return
+
+    const now = Date.now()
+    for (const model of owned) {
+      const shouldBeDefault = model.id === keep.id
+      if (model.isDefault !== shouldBeDefault) {
+        this.registry.set(model.id, { ...model, isDefault: shouldBeDefault, updatedAt: now })
       }
     }
   }
@@ -239,8 +290,10 @@ export class VrmRegistryStore {
           // バイナリが消えているエントリは無視（DB だけ残った状態を救う）
           continue
         }
-        this.registry.set(entry.id, entry)
+        this.registry.set(entry.id, { ...entry, ownerUserId: normalizeOwnerUserId(entry.ownerUserId) })
       }
+      const ownerIds = new Set([...this.registry.values()].map((entry) => entry.ownerUserId))
+      for (const ownerUserId of ownerIds) this.ensureDefaultForOwner(ownerUserId)
     } catch (error) {
       console.warn('Warning: failed to load VRM registry, starting empty:', error)
     }
@@ -253,6 +306,21 @@ export class VrmRegistryStore {
       this.debounceTimer = null
     }
     await this.saveToDisk()
+  }
+}
+
+function normalizeOwnerUserId(ownerUserId: string | undefined): string {
+  return ownerUserId?.trim() || ANONYMOUS_USER_ID
+}
+
+function isVisibleToUser(model: VrmModel, options: VrmVisibilityOptions): boolean {
+  return model.ownerUserId === options.userId || (options.usePublicVrms && model.isPublic)
+}
+
+function assertOwner(model: VrmModel, ownerUserId: string | undefined): void {
+  if (ownerUserId === undefined) return
+  if (model.ownerUserId !== ownerUserId) {
+    throw new Error(`VRM not found: ${model.id}`)
   }
 }
 

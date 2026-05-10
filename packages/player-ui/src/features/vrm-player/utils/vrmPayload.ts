@@ -110,6 +110,7 @@ export interface PoseSegment {
   prePhonemeLength?: number
   postPhonemeLength?: number
   audioBase64?: string
+  audioMimeType?: string
   speaker?: number
   speakerName?: string
   // VOICEVOX のモーラ／母音長情報。リップシンクの母音モードで参照する。
@@ -136,6 +137,7 @@ function pickPoseSegments(source: unknown): PoseSegment[] | null {
       prePhonemeLength: typeof segment.prePhonemeLength === 'number' ? segment.prePhonemeLength : undefined,
       postPhonemeLength: typeof segment.postPhonemeLength === 'number' ? segment.postPhonemeLength : undefined,
       audioBase64: readString(segment, 'audioBase64'),
+      audioMimeType: readString(segment, 'audioMimeType'),
       speaker: typeof segment.speaker === 'number' ? segment.speaker : undefined,
       speakerName: readString(segment, 'speakerName'),
       audioQuery: isRecord(segment.audioQuery) ? (segment.audioQuery as unknown as AudioQuery) : undefined,

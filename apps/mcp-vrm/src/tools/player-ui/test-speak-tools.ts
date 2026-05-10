@@ -1,6 +1,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
+import { resolveUserId } from '../auth-context.js'
 import { registerAppToolIfEnabled } from '../registration.js'
+import type { ToolHandlerExtra } from '../types.js'
 import { createErrorResponse } from '../utils.js'
 import type { PlayerUIToolContext } from './context.js'
 
@@ -34,10 +36,15 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async ({ speakerId, text }: { speakerId: number; text?: string }): Promise<CallToolResult> => {
+    async (
+      { speakerId, text }: { speakerId: number; text?: string },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         const finalText = (text ?? '').trim() || DEFAULT_TEST_TEXT
         const result = await synthesizeWithCache({
+          userId,
           text: finalText,
           speaker: speakerId,
         })
@@ -71,16 +78,21 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
     {
       title: 'Get Player Audio (Player)',
       description:
-        'Fetch base64 audio for all segments of a previously created speak_player view. Synthesis is cached per segment so repeated calls return immediately.',
+        'Fetch base64 audio for one or all segments of a previously created speak_player view. Synthesis is cached per segment so repeated calls return immediately.',
       inputSchema: {
         viewUUID: z.string().min(1).describe('viewUUID returned by speak_player'),
+        index: z.number().int().min(0).optional().describe('Segment index to fetch. Omit to fetch all segments.'),
       },
       _meta: {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async ({ viewUUID }: { viewUUID: string }): Promise<CallToolResult> => {
+    async (
+      { viewUUID, index }: { viewUUID: string; index?: number },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         const state = getSessionState(viewUUID)
         if (!state) {
           return {
@@ -94,10 +106,27 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
           }
         }
 
+        if (index !== undefined && index >= state.segments.length) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ error: 'segment not found', viewUUID, index }),
+              },
+            ],
+            isError: true,
+          }
+        }
+
+        const targetSegments =
+          index === undefined
+            ? state.segments.map((segment, segmentIndex) => ({ segment, index: segmentIndex }))
+            : [{ segment: state.segments[index], index }]
         const segments = await Promise.all(
-          state.segments.map(async (segment, index) => {
+          targetSegments.map(async ({ segment, index }) => {
             try {
               const result = await synthesizeWithCache({
+                userId,
                 text: segment.text,
                 speaker: segment.speaker,
                 audioQuery: segment.audioQuery,
@@ -118,8 +147,9 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
                 postPhonemeLength: result.postPhonemeLength,
               }
             } catch (error) {
-              console.warn('[_get_player_audio_for_player] synthesize failed:', error)
-              return { index, audioBase64: undefined as string | undefined }
+              throw new Error(
+                `segment ${index} の音声合成に失敗しました: ${error instanceof Error ? error.message : String(error)}`
+              )
             }
           })
         )
@@ -162,21 +192,26 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async ({
-      speakerId,
-      text,
-      speedScale,
-      prePhonemeLength,
-      postPhonemeLength,
-    }: {
-      speakerId: number
-      text: string
-      speedScale?: number
-      prePhonemeLength?: number
-      postPhonemeLength?: number
-    }): Promise<CallToolResult> => {
+    async (
+      {
+        speakerId,
+        text,
+        speedScale,
+        prePhonemeLength,
+        postPhonemeLength,
+      }: {
+        speakerId: number
+        text: string
+        speedScale?: number
+        prePhonemeLength?: number
+        postPhonemeLength?: number
+      },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         const result = await synthesizeWithCache({
+          userId,
           text,
           speaker: speakerId,
           speedScale,

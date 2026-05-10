@@ -56,6 +56,15 @@ function ErrorView({ message }: { message: string }) {
   )
 }
 
+function ErrorStatus({ message }: { message: string }) {
+  return (
+    <div className="mx-3 mb-3 shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+      <span className="font-semibold">エラー: </span>
+      {message}
+    </div>
+  )
+}
+
 export function McpApp() {
   const [view, setView] = useState<View>('player')
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
@@ -127,17 +136,17 @@ export function McpApp() {
     return <PoseListView app={player.app} onBack={() => setView('settings')} />
   }
 
-  if (player.status === 'error') {
-    return <ErrorView message={player.errorMsg} />
-  }
-
   const preparing = player.loadingPhase !== 'idle' && player.loadingPhase !== 'ready' && player.loadingPhase !== 'error'
-  const playerRootClassName = [fullscreen ? 'h-full min-h-0' : '', preparing ? 'player-root-preparing' : '']
+  const playerRootClassName = [fullscreen ? 'min-h-0 flex-1' : '', preparing ? 'player-root-preparing' : '']
     .filter(Boolean)
     .join(' ')
+  const showErrorStatus = player.status === 'error' && player.errorMsg
 
   return (
-    <div data-display-mode={displayMode.displayMode} className="relative">
+    <div
+      data-display-mode={displayMode.displayMode}
+      className={fullscreen ? 'relative flex h-full min-h-0 flex-col' : 'relative'}
+    >
       <div className={playerRootClassName || undefined} aria-hidden={preparing}>
         <VRMPlayer
           app={player.app}
@@ -181,6 +190,7 @@ export function McpApp() {
           }}
         />
       </div>
+      {showErrorStatus ? <ErrorStatus message={player.errorMsg} /> : null}
       {preparing ? <LoadingOverlay phase={player.loadingPhase} progress={player.loadingProgress} /> : null}
     </div>
   )

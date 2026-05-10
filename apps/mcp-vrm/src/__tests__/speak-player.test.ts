@@ -33,7 +33,10 @@ interface CapturedRegistration {
   handler: (args: Record<string, unknown>, extra: { sessionId?: string }) => Promise<CallToolResult>
 }
 
-function buildHarness(registry: VrmRegistryStore) {
+function buildHarness(
+  registry: VrmRegistryStore,
+  options: { synthesizeWithCache?: PlayerRuntime['synthesizeWithCache'] } = {}
+) {
   const registrations: CapturedRegistration[] = []
   const server = {
     registerTool: (name: string, config: Record<string, unknown>, handler: CapturedRegistration['handler']) => {
@@ -61,13 +64,15 @@ function buildHarness(registry: VrmRegistryStore) {
       return map
     },
     getUserDictionaryWords: async () => [],
-    synthesizeWithCache: async ({ text, speaker, speedScale }) => ({
-      audioBase64: `audio-for-${speaker}-${text}`,
-      text,
-      speaker,
-      speakerName: `Speaker ${speaker}`,
-      speedScale,
-    }),
+    synthesizeWithCache:
+      options.synthesizeWithCache ??
+      (async ({ text, speaker, speedScale }) => ({
+        audioBase64: `audio-for-${speaker}-${text}`,
+        text,
+        speaker,
+        speakerName: `Speaker ${speaker}`,
+        speedScale,
+      })),
     setSessionState: (key, state) => sessionStates.set(key, state),
     getSessionState: (viewUUID, sessionId) => sessionStates.get(viewUUID ?? sessionId ?? 'global'),
     getSessionStateByKey: (key) => sessionStates.get(key),
@@ -227,6 +232,25 @@ describe('speak_player Phase 5', () => {
     expect(json).not.toContain('audioBase64')
     // 1MB 制限に引っかからないよう、結果は十分軽量であること。
     expect(Buffer.byteLength(json, 'utf-8')).toBeLessThan(1024 * 1024)
+  })
+
+  it('音声合成に失敗したら再生可能な成功レスポンスにしない', async () => {
+    const model = await registry.register({ name: 'Alice', speakerId: 1, vrmBase64: SAMPLE_VRM_BASE64 })
+    const harness = buildHarness(registry, {
+      synthesizeWithCache: async () => {
+        throw new Error('VOICEVOX unavailable')
+      },
+    })
+
+    const result = await harness.invoke({
+      modelId: model.id,
+      segments: [{ text: 'Hi' }],
+    })
+
+    expect(result.isError).toBe(true)
+    const text = (result.content?.[0] as { type: 'text'; text: string }).text
+    expect(text).toContain('VOICEVOX unavailable')
+    expect(result.structuredContent).toBeUndefined()
   })
 
   it('全セグメントの speaker はモデル登録時の speakerId に統一される', async () => {

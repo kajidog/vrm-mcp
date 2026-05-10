@@ -8,6 +8,7 @@ import { createOAuthConfig, isNodejs, launchServer, setSessionConfig } from '@ka
 import { getConfig, getConfigTemplate, getHelpText } from './config.js'
 import { createVrmOAuthHttpOptions } from './oauth.js'
 import { createServer, server } from './server.js'
+import { getPlayerRuntimeStores } from './tools/player/runtime.js'
 import { registerVrmHttpRoutes } from './vrm-http.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -145,7 +146,7 @@ async function startMCPServer(): Promise<void> {
       extraCorsHeaders: ['X-TTS-Speaker'],
       ...createVrmOAuthHttpOptions(authConfig),
       configureApp: (app) => {
-        registerVrmHttpRoutes(app, config)
+        registerVrmHttpRoutes(app, config, getPlayerRuntimeStores() ?? undefined)
       },
       onSessionInitialized: (sessionId, request) => {
         // X-TTS-Speaker ヘッダーからセッションのデフォルト話者を設定

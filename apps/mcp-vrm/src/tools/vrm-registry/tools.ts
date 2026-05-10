@@ -4,29 +4,37 @@ import { resolve } from 'node:path'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 import { getVrmModelUrl } from '../../vrm-http.js'
+import { resolveUserId } from '../auth-context.js'
 import { EMOTION_NAMES, type EmotionBinding, isEmotionName } from '../emotions.js'
 import type { PlayerUIToolContext } from '../player-ui/context.js'
 import type { PoseRegistryStore } from '../pose-registry/store.js'
 import type { ModelPoseAttachment } from '../pose-registry/types.js'
 import { isBuiltinPoseResourceId } from '../pose-registry/types.js'
 import { registerAppToolIfEnabled } from '../registration.js'
+import type { ToolHandlerExtra } from '../types.js'
 import { createErrorResponse } from '../utils.js'
 import type { VrmRegistryStore } from './store.js'
 import type { VrmModel } from './types.js'
 
-function toMetadataPayload(model: VrmModel): Omit<VrmModel, 'vrmFilePath'> {
+function toMetadataPayload(model: VrmModel, userId?: string): Omit<VrmModel, 'vrmFilePath'> & { canEdit?: boolean } {
   // 内部のファイルパスは UI に出さない（パス露出と iframe からのアクセス不可のため）。
   const { vrmFilePath: _vrmFilePath, ...rest } = model
-  return rest
+  return userId
+    ? { ...rest, isDefault: model.ownerUserId === userId && model.isDefault, canEdit: model.ownerUserId === userId }
+    : rest
 }
 
-function validateAttachments(poseRegistry: PoseRegistryStore, poses: ModelPoseAttachment[] | undefined): void {
+function validateAttachments(
+  poseRegistry: PoseRegistryStore,
+  userId: string,
+  poses: ModelPoseAttachment[] | undefined
+): void {
   if (poses === undefined) return
   for (const pose of poses) {
     if (!pose.poseId.trim()) throw new Error('poses[].poseId is required')
     if (!pose.name.trim()) throw new Error('poses[].name is required')
     if (isBuiltinPoseResourceId(pose.poseId)) continue
-    if (!poseRegistry.get(pose.poseId)) throw new Error(`Pose not found: ${pose.poseId}`)
+    if (!poseRegistry.getOwned(pose.poseId, userId)) throw new Error(`Pose not found: ${pose.poseId}`)
   }
 }
 
@@ -88,9 +96,13 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (): Promise<CallToolResult> => {
+    async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        const list = registry.list().map(toMetadataPayload)
+        const userId = resolveUserId(extra)
+        const settings = shared.playerSettings.applyDefaults({}, userId)
+        const list = registry
+          .listVisible({ userId, usePublicVrms: settings.usePublicVrms })
+          .map((model) => toMetadataPayload(model, userId))
         return { content: [{ type: 'text', text: JSON.stringify({ vrms: list }) }] }
       } catch (error) {
         return createErrorResponse(error)
@@ -112,16 +124,18 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async ({ modelId }: { modelId: string }): Promise<CallToolResult> => {
+    async ({ modelId }: { modelId: string }, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        const model = registry.get(modelId)
+        const userId = resolveUserId(extra)
+        const settings = shared.playerSettings.applyDefaults({}, userId)
+        const model = registry.getVisible(modelId, { userId, usePublicVrms: settings.usePublicVrms })
         if (!model) throw new Error(`VRM not found: ${modelId}`)
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
-                metadata: toMetadataPayload(model),
+                metadata: toMetadataPayload(model, userId),
                 vrmUrl: getVrmModelUrl(config, model.id),
                 vrmMimeType: 'model/gltf-binary',
               }),
@@ -154,20 +168,24 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (input: {
-      name: string
-      speakerId: number
-      isDefault?: boolean
-      isPublic?: boolean
-      poses?: ModelPoseAttachment[]
-      emotionBindings?: EmotionBinding[]
-      vrmBase64: string
-    }): Promise<CallToolResult> => {
+    async (
+      input: {
+        name: string
+        speakerId: number
+        isDefault?: boolean
+        isPublic?: boolean
+        poses?: ModelPoseAttachment[]
+        emotionBindings?: EmotionBinding[]
+        vrmBase64: string
+      },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
-        validateAttachments(poseRegistry, input.poses)
+        const userId = resolveUserId(extra)
+        validateAttachments(poseRegistry, userId, input.poses)
         validateEmotionBindings(input.emotionBindings)
-        const model = await registry.register(input)
-        return { content: [{ type: 'text', text: JSON.stringify({ vrm: toMetadataPayload(model) }) }] }
+        const model = await registry.register({ ...input, ownerUserId: userId })
+        return { content: [{ type: 'text', text: JSON.stringify({ vrm: toMetadataPayload(model, userId) }) }] }
       } catch (error) {
         return createErrorResponse(error)
       }
@@ -194,21 +212,25 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (input: {
-      modelId: string
-      name?: string
-      speakerId?: number
-      isDefault?: boolean
-      isPublic?: boolean
-      poses?: ModelPoseAttachment[]
-      emotionBindings?: EmotionBinding[]
-    }): Promise<CallToolResult> => {
+    async (
+      input: {
+        modelId: string
+        name?: string
+        speakerId?: number
+        isDefault?: boolean
+        isPublic?: boolean
+        poses?: ModelPoseAttachment[]
+        emotionBindings?: EmotionBinding[]
+      },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         const { modelId, ...fields } = input
-        validateAttachments(poseRegistry, fields.poses)
+        validateAttachments(poseRegistry, userId, fields.poses)
         validateEmotionBindings(fields.emotionBindings)
-        const model = registry.update(modelId, fields)
-        return { content: [{ type: 'text', text: JSON.stringify({ vrm: toMetadataPayload(model) }) }] }
+        const model = registry.update(modelId, fields, userId)
+        return { content: [{ type: 'text', text: JSON.stringify({ vrm: toMetadataPayload(model, userId) }) }] }
       } catch (error) {
         return createErrorResponse(error)
       }
@@ -230,15 +252,16 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (input: { modelId: string; vrmBase64: string }): Promise<CallToolResult> => {
+    async (input: { modelId: string; vrmBase64: string }, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        const model = await registry.replaceBinary(input.modelId, input.vrmBase64)
+        const userId = resolveUserId(extra)
+        const model = await registry.replaceBinary(input.modelId, input.vrmBase64, userId)
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
-                vrm: toMetadataPayload(model),
+                vrm: toMetadataPayload(model, userId),
                 vrmUrl: getVrmModelUrl(config, model.id),
               }),
             },
@@ -264,9 +287,10 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async ({ modelId }: { modelId: string }): Promise<CallToolResult> => {
+    async ({ modelId }: { modelId: string }, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        await registry.delete(modelId)
+        const userId = resolveUserId(extra)
+        await registry.delete(modelId, userId)
         return { content: [{ type: 'text', text: JSON.stringify({ deleted: modelId }) }] }
       } catch (error) {
         return createErrorResponse(error)
@@ -286,9 +310,10 @@ export function registerVrmRegistryTools(
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
     },
-    async (): Promise<CallToolResult> => {
+    async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        const defaultModel = registry.getDefault()
+        const userId = resolveUserId(extra)
+        const defaultModel = registry.getDefault(userId)
         if (defaultModel) {
           return {
             content: [
@@ -296,7 +321,7 @@ export function registerVrmRegistryTools(
                 type: 'text',
                 text: JSON.stringify({
                   source: 'registry',
-                  metadata: toMetadataPayload(defaultModel),
+                  metadata: toMetadataPayload(defaultModel, userId),
                   vrmUrl: getVrmModelUrl(config, defaultModel.id),
                   vrmMimeType: 'model/gltf-binary',
                 }),

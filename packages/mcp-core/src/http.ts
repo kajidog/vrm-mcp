@@ -190,13 +190,14 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono {
     console.log(`Received ${c.req.method} request for MCP`)
 
     const sessionId = c.req.header('mcp-session-id')
+    const authInfo = c.get('auth')
 
     try {
       // 既存セッションの再利用
       if (sessionId && transports.has(sessionId)) {
         console.log(`Reusing existing session: ${sessionId}`)
         const transport = transports.get(sessionId)!
-        return transport.handleRequest(c.req.raw)
+        return transport.handleRequest(c.req.raw, { authInfo })
       }
 
       // 新しいセッションの初期化（POSTリクエストのみ）
@@ -244,7 +245,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono {
           await sessionServer.connect(transport)
 
           // リクエスト処理（parsedBodyを渡す）
-          return transport.handleRequest(c.req.raw, { parsedBody: body })
+          return transport.handleRequest(c.req.raw, { parsedBody: body, authInfo })
         }
       }
 

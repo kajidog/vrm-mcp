@@ -10,10 +10,12 @@ import type { ModelPoseAttachment } from '../poses/types'
 // なったら専用の VRM 型パッケージを切る方針（PLAM.md 参照）。
 export interface VrmMetadata {
   id: string
+  ownerUserId?: string
   name: string
   speakerId: number
   isDefault: boolean
   isPublic: boolean
+  canEdit?: boolean
   poses?: ModelPoseAttachment[]
   emotionBindings?: EmotionBinding[]
   vrmSizeBytes: number

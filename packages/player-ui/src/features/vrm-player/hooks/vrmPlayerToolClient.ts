@@ -72,6 +72,7 @@ export async function fetchDefaultVrmOnServer(app: App): Promise<DefaultVrmResol
 export interface SegmentAudio {
   index: number
   audioBase64?: string
+  audioMimeType?: string
   speedScale?: number
   audioQuery?: AudioQuery
   prePhonemeLength?: number
@@ -84,29 +85,36 @@ export interface SegmentAudio {
  */
 export async function fetchSegmentsAudioOnServer(
   app: App,
-  viewUUID: string
-): Promise<{ audioMimeType: string; segments: SegmentAudio[] } | null> {
+  viewUUID: string,
+  index?: number
+): Promise<{ audioMimeType: string; segments: SegmentAudio[] }> {
   const result = await app.callServerTool({
     name: '_get_player_audio_for_player',
-    arguments: { viewUUID },
+    arguments: { viewUUID, ...(index !== undefined ? { index } : {}) },
   })
-  if (result.isError) return null
+  assertNoToolError(result)
 
   const payload = getTextPayload(result.content)
-  if (!payload) return null
+  if (!payload) throw new Error('Tool returned no text content')
 
   try {
     const parsed = JSON.parse(payload) as {
       audioMimeType?: string
       segments?: SegmentAudio[]
     }
-    if (!Array.isArray(parsed.segments)) return null
+    if (!Array.isArray(parsed.segments)) throw new Error('segments missing in response')
+    const segments = parsed.segments.map((segment) => ({
+      ...segment,
+      audioMimeType: parsed.audioMimeType ?? segment.audioMimeType ?? 'audio/wav',
+    }))
+    const missing = segments.find((segment) => !segment.audioBase64)
+    if (missing) throw new Error(`audioBase64 missing for segment ${missing.index}`)
     return {
       audioMimeType: parsed.audioMimeType ?? 'audio/wav',
-      segments: parsed.segments,
+      segments,
     }
-  } catch {
-    return null
+  } catch (error) {
+    throw new Error(`Invalid player audio response: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -157,9 +165,12 @@ export async function resynthesizeSegmentOnServer(
 
 export interface VrmListEntry {
   id: string
+  ownerUserId?: string
   name: string
   speakerId: number
   isDefault?: boolean
+  isPublic?: boolean
+  canEdit?: boolean
   poses?: ModelPoseAttachment[]
   emotionBindings?: EmotionBinding[]
   thumbnailBase64?: string
@@ -244,6 +255,7 @@ export interface PlayerSettings {
   prePhonemeLength?: number
   postPhonemeLength?: number
   autoPlay?: boolean
+  usePublicVrms?: boolean
 }
 
 export interface PlayerSettingsResponse {

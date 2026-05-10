@@ -45,7 +45,7 @@ describe('VrmRegistryStore', () => {
 
     expect(model.id).toBeTypeOf('string')
     expect(model.name).toBe('Alice')
-    expect(model.isDefault).toBe(false)
+    expect(model.isDefault).toBe(true)
     expect(model.isPublic).toBe(false)
     expect(model.poses?.map((pose) => pose.poseId)).toEqual([
       'builtin:idle',
@@ -90,6 +90,27 @@ describe('VrmRegistryStore', () => {
     expect(store.getDefault()?.id).toBe(model.id)
   })
 
+  it('所有者ごとの1件目は isDefault 指定なしでも default になる', async () => {
+    const store = createStore()
+    const a = await store.register({
+      ownerUserId: 'user-a',
+      name: 'A',
+      speakerId: 1,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+    const b = await store.register({
+      ownerUserId: 'user-b',
+      name: 'B',
+      speakerId: 2,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+
+    expect(a.isDefault).toBe(true)
+    expect(b.isDefault).toBe(true)
+    expect(store.getDefault('user-a')?.id).toBe(a.id)
+    expect(store.getDefault('user-b')?.id).toBe(b.id)
+  })
+
   it('複数の isDefault を作っても 1 件しか default は残らない', async () => {
     const store = createStore()
     const a = await store.register({ name: 'A', speakerId: 1, isDefault: true, vrmBase64: SAMPLE_VRM_BASE64 })
@@ -98,6 +119,69 @@ describe('VrmRegistryStore', () => {
     expect(store.get(a.id)?.isDefault).toBe(false)
     expect(store.get(b.id)?.isDefault).toBe(true)
     expect(store.getDefault()?.id).toBe(b.id)
+  })
+
+  it('default はユーザーごとに独立する', async () => {
+    const store = createStore()
+    const a = await store.register({
+      ownerUserId: 'user-a',
+      name: 'A',
+      speakerId: 1,
+      isDefault: true,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+    const b = await store.register({
+      ownerUserId: 'user-b',
+      name: 'B',
+      speakerId: 2,
+      isDefault: true,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+
+    expect(store.getDefault('user-a')?.id).toBe(a.id)
+    expect(store.getDefault('user-b')?.id).toBe(b.id)
+    expect(store.get(a.id)?.isDefault).toBe(true)
+    expect(store.get(b.id)?.isDefault).toBe(true)
+  })
+
+  it('公開VRMは他ユーザーから可視、非公開VRMは不可視', async () => {
+    const store = createStore()
+    const privateModel = await store.register({
+      ownerUserId: 'user-a',
+      name: 'Private',
+      speakerId: 1,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+    const publicModel = await store.register({
+      ownerUserId: 'user-a',
+      name: 'Public',
+      speakerId: 1,
+      isPublic: true,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+
+    expect(store.listVisible({ userId: 'user-b', usePublicVrms: true }).map((model) => model.id)).toEqual([
+      publicModel.id,
+    ])
+    expect(store.getVisible(publicModel.id, { userId: 'user-b', usePublicVrms: true })?.id).toBe(publicModel.id)
+    expect(store.getVisible(privateModel.id, { userId: 'user-b', usePublicVrms: true })).toBeUndefined()
+    expect(store.listVisible({ userId: 'user-b', usePublicVrms: false })).toEqual([])
+  })
+
+  it('公開VRMでも所有者以外は更新・削除できない', async () => {
+    const store = createStore()
+    const model = await store.register({
+      ownerUserId: 'user-a',
+      name: 'Public',
+      speakerId: 1,
+      isPublic: true,
+      vrmBase64: SAMPLE_VRM_BASE64,
+    })
+
+    expect(() => store.update(model.id, { name: 'hacked' }, 'user-b')).toThrow(/VRM not found/)
+    await expect(store.replaceBinary(model.id, SAMPLE_VRM_BASE64, 'user-b')).rejects.toThrow(/VRM not found/)
+    await expect(store.delete(model.id, 'user-b')).rejects.toThrow(/VRM not found/)
+    expect(store.get(model.id)?.name).toBe('Public')
   })
 
   it('updateで isDefault=true にすると他の default が解除される', async () => {
@@ -119,8 +203,29 @@ describe('VrmRegistryStore', () => {
 
     expect(updated.name).toBe('Renamed')
     expect(updated.speakerId).toBe(7)
-    expect(updated.isDefault).toBe(false)
+    expect(updated.isDefault).toBe(true)
     expect(updated.updatedAt).toBeGreaterThanOrEqual(m.updatedAt)
+  })
+
+  it('最後の default を false に更新しても default は残る', async () => {
+    const store = createStore()
+    const m = await store.register({ name: 'A', speakerId: 1, vrmBase64: SAMPLE_VRM_BASE64 })
+
+    const updated = store.update(m.id, { isDefault: false })
+
+    expect(updated.isDefault).toBe(true)
+    expect(store.getDefault()?.id).toBe(m.id)
+  })
+
+  it('default を削除すると同じ所有者の残りから default が補充される', async () => {
+    const store = createStore()
+    const a = await store.register({ name: 'A', speakerId: 1, isDefault: true, vrmBase64: SAMPLE_VRM_BASE64 })
+    const b = await store.register({ name: 'B', speakerId: 2, vrmBase64: SAMPLE_VRM_BASE64 })
+
+    await store.delete(a.id)
+
+    expect(store.get(b.id)?.isDefault).toBe(true)
+    expect(store.getDefault()?.id).toBe(b.id)
   })
 
   it('削除するとメタもファイルも消える', async () => {

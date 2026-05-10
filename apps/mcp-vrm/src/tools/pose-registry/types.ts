@@ -1,5 +1,6 @@
 export interface PoseResource {
   id: string
+  ownerUserId: string
   name?: string
   vrmaFilePath: string
   vrmaSizeBytes: number

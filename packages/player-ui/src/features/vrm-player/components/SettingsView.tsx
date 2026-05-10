@@ -18,8 +18,9 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
   const [cliDefaults, setCliDefaults] = useState<PlayerSettings & { speedScale: number; autoPlay: boolean }>({
     speedScale: 1,
     autoPlay: true,
+    usePublicVrms: true,
   })
-  const [values, setValues] = useState<PlayerSettings>({ speedScale: 1, autoPlay: true })
+  const [values, setValues] = useState<PlayerSettings>({ speedScale: 1, autoPlay: true, usePublicVrms: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -36,6 +37,7 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
           prePhonemeLength: settings.overrides.prePhonemeLength ?? settings.cliDefaults.prePhonemeLength ?? 0,
           postPhonemeLength: settings.overrides.postPhonemeLength ?? settings.cliDefaults.postPhonemeLength ?? 0,
           autoPlay: settings.overrides.autoPlay ?? settings.cliDefaults.autoPlay,
+          usePublicVrms: settings.overrides.usePublicVrms ?? settings.cliDefaults.usePublicVrms ?? true,
         })
       })
       .catch((e) => {
@@ -61,6 +63,7 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
           prePhonemeLength: cliDefaults.prePhonemeLength ?? 0,
           postPhonemeLength: cliDefaults.postPhonemeLength ?? 0,
           autoPlay: cliDefaults.autoPlay,
+          usePublicVrms: cliDefaults.usePublicVrms ?? true,
         })
       }
     } catch (e) {
@@ -119,6 +122,12 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
             checked={values.autoPlay ?? cliDefaults.autoPlay}
             defaultValue={cliDefaults.autoPlay}
             onChange={(autoPlay) => setValues((prev) => ({ ...prev, autoPlay }))}
+          />
+          <SettingToggle
+            label="公開VRMを使用"
+            checked={values.usePublicVrms ?? cliDefaults.usePublicVrms ?? true}
+            defaultValue={cliDefaults.usePublicVrms ?? true}
+            onChange={(usePublicVrms) => setValues((prev) => ({ ...prev, usePublicVrms }))}
           />
         </div>
 

@@ -14,6 +14,7 @@ export const playerResourceUri = 'ui://speak-player/player.html'
 type SpeakerEntry = { id: number; name: string; characterName: string; uuid: string }
 
 type SynthesizeInput = {
+  userId?: string
   text: string
   speaker: number
   audioQuery?: AudioQuery
@@ -152,7 +153,7 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
       postPhonemeLength,
       pauseLengthScale,
       accentPhrases,
-    } = playerSettings.applyDefaults(input)
+    } = playerSettings.applyDefaults(input, input.userId)
     const speakerName = await getSpeakerName(speaker)
 
     // アクセント編集時は /mora_data でピッチ再計算してからキャッシュキーを作る。
@@ -269,5 +270,17 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
     vrmRegistry,
     poseRegistry,
     playerSettings,
+  }
+}
+
+export function getPlayerRuntimeStores(): Pick<
+  PlayerRuntime,
+  'vrmRegistry' | 'poseRegistry' | 'playerSettings'
+> | null {
+  if (!vrmRegistryStore || !poseRegistryStore || !playerSettingsStore) return null
+  return {
+    vrmRegistry: vrmRegistryStore,
+    poseRegistry: poseRegistryStore,
+    playerSettings: playerSettingsStore,
   }
 }

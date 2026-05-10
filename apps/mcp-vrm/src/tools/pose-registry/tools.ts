@@ -1,8 +1,10 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as z from 'zod'
 import { getPoseVrmaUrl } from '../../vrm-http.js'
+import { resolveUserId } from '../auth-context.js'
 import type { PlayerUIToolContext } from '../player-ui/context.js'
 import { registerAppToolIfEnabled } from '../registration.js'
+import type { ToolHandlerExtra } from '../types.js'
 import { createErrorResponse } from '../utils.js'
 import type { VrmRegistryStore } from '../vrm-registry/store.js'
 import type { PoseRegistryStore } from './store.js'
@@ -65,9 +67,13 @@ export function registerPoseRegistryTools(
       description: 'List registered pose resources plus builtin poses. Only callable from the app UI.',
       _meta: { ui: { resourceUri: playerResourceUri, visibility: ['app'] } },
     },
-    async (): Promise<CallToolResult> => {
+    async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
-        const poses = [...builtinPoseMetadata(), ...poseRegistry.list().map((pose) => toPoseMetadata(config, pose))]
+        const userId = resolveUserId(extra)
+        const poses = [
+          ...builtinPoseMetadata(),
+          ...poseRegistry.listOwned(userId).map((pose) => toPoseMetadata(config, pose)),
+        ]
         return { content: [{ type: 'text', text: JSON.stringify({ poses }) }] }
       } catch (error) {
         return createErrorResponse(error)
@@ -85,7 +91,7 @@ export function registerPoseRegistryTools(
       inputSchema: { poseId: z.string().describe('Pose resource ID') },
       _meta: { ui: { resourceUri: playerResourceUri, visibility: ['app'] } },
     },
-    async ({ poseId }: { poseId: string }): Promise<CallToolResult> => {
+    async ({ poseId }: { poseId: string }, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
         if (isBuiltinPoseResourceId(poseId)) {
           return {
@@ -94,7 +100,9 @@ export function registerPoseRegistryTools(
             ],
           }
         }
-        const pose = poseRegistry.get(poseId)
+        const userId = resolveUserId(extra)
+        const settings = shared.playerSettings.applyDefaults({}, userId)
+        const pose = getReadablePose(poseRegistry, vrmRegistry, poseId, userId, settings.usePublicVrms)
         if (!pose) throw new Error(`Pose not found: ${poseId}`)
         return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose) }) }] }
       } catch (error) {
@@ -118,9 +126,13 @@ export function registerPoseRegistryTools(
       },
       _meta: { ui: { resourceUri: playerResourceUri, visibility: ['app'] } },
     },
-    async (input: { id: string; name?: string; vrmaBase64: string; loop: boolean }): Promise<CallToolResult> => {
+    async (
+      input: { id: string; name?: string; vrmaBase64: string; loop: boolean },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
-        const pose = await poseRegistry.register(input)
+        const userId = resolveUserId(extra)
+        const pose = await poseRegistry.register({ ...input, ownerUserId: userId })
         return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose) }) }] }
       } catch (error) {
         return createErrorResponse(error)
@@ -138,10 +150,14 @@ export function registerPoseRegistryTools(
       inputSchema: { poseId: z.string(), name: z.string().optional(), loop: z.boolean().optional() },
       _meta: { ui: { resourceUri: playerResourceUri, visibility: ['app'] } },
     },
-    async (input: { poseId: string; name?: string; loop?: boolean }): Promise<CallToolResult> => {
+    async (
+      input: { poseId: string; name?: string; loop?: boolean },
+      extra: ToolHandlerExtra
+    ): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         if (isBuiltinPoseResourceId(input.poseId)) throw new Error('Builtin poses cannot be updated')
-        const pose = poseRegistry.update(input.poseId, { name: input.name, loop: input.loop })
+        const pose = poseRegistry.update(input.poseId, { name: input.name, loop: input.loop }, userId)
         return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose) }) }] }
       } catch (error) {
         return createErrorResponse(error)
@@ -159,21 +175,40 @@ export function registerPoseRegistryTools(
       inputSchema: { poseId: z.string() },
       _meta: { ui: { resourceUri: playerResourceUri, visibility: ['app'] } },
     },
-    async ({ poseId }: { poseId: string }): Promise<CallToolResult> => {
+    async ({ poseId }: { poseId: string }, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
+        const userId = resolveUserId(extra)
         if (isBuiltinPoseResourceId(poseId)) throw new Error('Builtin poses cannot be deleted')
+        if (!poseRegistry.getOwned(poseId, userId)) throw new Error(`Pose not found: ${poseId}`)
         const referencing = vrmRegistry
           .list()
-          .filter((model) => model.poses?.some((pose) => pose.poseId === poseId))
+          .filter((model) => model.ownerUserId === userId && model.poses?.some((pose) => pose.poseId === poseId))
           .map((model) => model.name)
         if (referencing.length > 0) {
           throw new Error(`Pose is attached to VRM model(s): ${referencing.join(', ')}`)
         }
-        await poseRegistry.delete(poseId)
+        await poseRegistry.delete(poseId, userId)
         return { content: [{ type: 'text', text: JSON.stringify({ deleted: poseId }) }] }
       } catch (error) {
         return createErrorResponse(error)
       }
     }
   )
+}
+
+function getReadablePose(
+  poseRegistry: PoseRegistryStore,
+  vrmRegistry: VrmRegistryStore,
+  poseId: string,
+  userId: string,
+  usePublicVrms: boolean
+): PoseResource | undefined {
+  const pose = poseRegistry.get(poseId)
+  if (!pose) return undefined
+  if (pose.ownerUserId === userId) return pose
+  if (!usePublicVrms) return undefined
+  const referencedByPublicVrm = vrmRegistry
+    .listVisible({ userId, usePublicVrms })
+    .some((model) => model.isPublic && model.poses?.some((attachment) => attachment.poseId === poseId))
+  return referencedByPublicVrm ? pose : undefined
 }

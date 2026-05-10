@@ -41,6 +41,7 @@ interface FormState {
   name: string
   speakerId: number | null
   isDefault: boolean
+  isPublic: boolean
   poses: FormAttachment[]
   emotionBindings: EmotionBinding[]
 }
@@ -52,6 +53,7 @@ const INITIAL_FORM: FormState = {
   name: '',
   speakerId: null,
   isDefault: false,
+  isPublic: false,
   poses: Object.keys(POSE_PRESETS).map((id) => ({
     _key: nextAttachmentKey(),
     poseId: `builtin:${id}`,
@@ -176,6 +178,7 @@ export function VrmRegisterView({
       name: metadata.name,
       speakerId: metadata.speakerId,
       isDefault: metadata.isDefault,
+      isPublic: metadata.isPublic,
       poses: withAttachmentKeys(metadata.poses ?? stripAttachmentKeys(INITIAL_FORM.poses)),
       emotionBindings: normalizeEmotionBindings(metadata.emotionBindings),
     })
@@ -275,6 +278,7 @@ export function VrmRegisterView({
           name: form.name.trim(),
           speakerId: form.speakerId,
           isDefault: form.isDefault,
+          isPublic: form.isPublic,
           poses: persistedPoses,
           emotionBindings: persistedEmotionBindings,
         })
@@ -288,6 +292,7 @@ export function VrmRegisterView({
           name: form.name.trim(),
           speakerId: form.speakerId,
           isDefault: form.isDefault,
+          isPublic: form.isPublic,
           poses: persistedPoses,
           emotionBindings: persistedEmotionBindings,
           vrmBase64: arrayBufferToBase64(vrmBuffer),
@@ -501,6 +506,7 @@ export function VrmRegisterView({
           name={form.name}
           speakerId={form.speakerId}
           isDefault={form.isDefault}
+          isPublic={form.isPublic}
           speakers={speakers}
           speakersLoading={speakersLoading}
           speakersError={speakersError}
@@ -512,6 +518,7 @@ export function VrmRegisterView({
           onNameChange={(name) => setForm((prev) => ({ ...prev, name }))}
           onSpeakerChange={(speakerId) => setForm((prev) => ({ ...prev, speakerId }))}
           onDefaultChange={(nextIsDefault) => setForm((prev) => ({ ...prev, isDefault: nextIsDefault }))}
+          onPublicChange={(nextIsPublic) => setForm((prev) => ({ ...prev, isPublic: nextIsPublic }))}
           openFilePicker={drop.openFilePicker}
         />
       </Accordion>

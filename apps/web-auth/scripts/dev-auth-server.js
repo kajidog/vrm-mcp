@@ -114,6 +114,7 @@ const server = http.createServer(async (req, res) => {
 
       // Generate JWT
       const jwt = await new SignJWT({
+        sub: authData.clientId || 'dev-user',
         scope: authData.scope,
         azp: authData.clientId, // Authorized party
       })

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { ServerConfig } from '../../config.js'
+import { ANONYMOUS_USER_ID } from '../auth-context.js'
 
 const SETTINGS_FILE_NAME = 'player-settings.json'
 
@@ -10,6 +11,7 @@ export interface PlayerSettingsOverrides {
   prePhonemeLength?: number
   postPhonemeLength?: number
   autoPlay?: boolean
+  usePublicVrms?: boolean
 }
 
 export interface PlayerSettingsPatch {
@@ -17,6 +19,7 @@ export interface PlayerSettingsPatch {
   prePhonemeLength?: number | null
   postPhonemeLength?: number | null
   autoPlay?: boolean | null
+  usePublicVrms?: boolean | null
 }
 
 export interface PlayerCliDefaults {
@@ -24,10 +27,11 @@ export interface PlayerCliDefaults {
   prePhonemeLength?: number
   postPhonemeLength?: number
   autoPlay: boolean
+  usePublicVrms: boolean
 }
 
 export class PlayerSettingsStore {
-  private overrides: PlayerSettingsOverrides = {}
+  private overridesByUser = new Map<string, PlayerSettingsOverrides>()
   private readonly settingsFilePath: string
   private readonly cliDefaults: PlayerCliDefaults
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -39,6 +43,7 @@ export class PlayerSettingsStore {
       prePhonemeLength: config.defaultPrePhonemeLength,
       postPhonemeLength: config.defaultPostPhonemeLength,
       autoPlay: config.autoPlay,
+      usePublicVrms: true,
     }
 
     try {
@@ -50,36 +55,38 @@ export class PlayerSettingsStore {
     this.loadFromDisk()
   }
 
-  get(): PlayerSettingsOverrides {
-    return { ...this.overrides }
+  get(userId = ANONYMOUS_USER_ID): PlayerSettingsOverrides {
+    return { ...(this.overridesByUser.get(userId) ?? {}) }
   }
 
   getCliDefaults(): PlayerCliDefaults {
     return { ...this.cliDefaults }
   }
 
-  set(patch: PlayerSettingsPatch): PlayerSettingsOverrides {
-    this.overrides = applyPatch(this.overrides, patch)
+  set(patch: PlayerSettingsPatch, userId = ANONYMOUS_USER_ID): PlayerSettingsOverrides {
+    this.overridesByUser.set(userId, applyPatch(this.overridesByUser.get(userId) ?? {}, patch))
     this.scheduleSave()
-    return this.get()
+    return this.get(userId)
   }
 
-  reset(): PlayerSettingsOverrides {
-    this.overrides = {}
+  reset(userId = ANONYMOUS_USER_ID): PlayerSettingsOverrides {
+    this.overridesByUser.delete(userId)
     this.scheduleSave()
-    return this.get()
+    return this.get(userId)
   }
 
   applyDefaults<T extends PlayerSettingsOverrides>(
-    input: T
-  ): T & Required<Pick<PlayerSettingsOverrides, 'speedScale' | 'autoPlay'>> {
+    input: T,
+    userId = ANONYMOUS_USER_ID
+  ): T & Required<Pick<PlayerSettingsOverrides, 'speedScale' | 'autoPlay' | 'usePublicVrms'>> {
+    const overrides = this.overridesByUser.get(userId) ?? {}
     return {
       ...input,
-      speedScale: input.speedScale ?? this.overrides.speedScale ?? this.cliDefaults.speedScale,
-      prePhonemeLength: input.prePhonemeLength ?? this.overrides.prePhonemeLength ?? this.cliDefaults.prePhonemeLength,
-      postPhonemeLength:
-        input.postPhonemeLength ?? this.overrides.postPhonemeLength ?? this.cliDefaults.postPhonemeLength,
-      autoPlay: input.autoPlay ?? this.overrides.autoPlay ?? this.cliDefaults.autoPlay,
+      speedScale: input.speedScale ?? overrides.speedScale ?? this.cliDefaults.speedScale,
+      prePhonemeLength: input.prePhonemeLength ?? overrides.prePhonemeLength ?? this.cliDefaults.prePhonemeLength,
+      postPhonemeLength: input.postPhonemeLength ?? overrides.postPhonemeLength ?? this.cliDefaults.postPhonemeLength,
+      autoPlay: input.autoPlay ?? overrides.autoPlay ?? this.cliDefaults.autoPlay,
+      usePublicVrms: input.usePublicVrms ?? overrides.usePublicVrms ?? this.cliDefaults.usePublicVrms,
     }
   }
 
@@ -96,7 +103,7 @@ export class PlayerSettingsStore {
       const payload = JSON.stringify({
         version: 1,
         savedAt: Date.now(),
-        overrides: this.overrides,
+        users: Object.fromEntries(this.overridesByUser),
       })
       const tempPath = `${this.settingsFilePath}.tmp`
       await writeFile(tempPath, payload, 'utf-8')
@@ -110,8 +117,18 @@ export class PlayerSettingsStore {
     try {
       if (!existsSync(this.settingsFilePath)) return
       const raw = readFileSync(this.settingsFilePath, 'utf-8')
-      const parsed = JSON.parse(raw) as { overrides?: PlayerSettingsOverrides }
-      this.overrides = normalizeOverrides(parsed.overrides ?? {})
+      const parsed = JSON.parse(raw) as {
+        overrides?: PlayerSettingsOverrides
+        users?: Record<string, PlayerSettingsOverrides>
+      }
+      this.overridesByUser.clear()
+      if (parsed.users && typeof parsed.users === 'object') {
+        for (const [userId, overrides] of Object.entries(parsed.users)) {
+          this.overridesByUser.set(userId, normalizeOverrides(overrides ?? {}))
+        }
+      } else if (parsed.overrides) {
+        this.overridesByUser.set(ANONYMOUS_USER_ID, normalizeOverrides(parsed.overrides))
+      }
     } catch (error) {
       console.warn('Warning: failed to load player settings, starting empty:', error)
     }
@@ -140,10 +157,18 @@ function applyPatch(current: PlayerSettingsOverrides, patch: PlayerSettingsPatch
   if ('autoPlay' in patch) {
     const value = patch.autoPlay
     if (value === null || value === undefined) {
-      const { autoPlay: _autoPlay, ...rest } = next
-      return rest
+      next.autoPlay = undefined
+    } else {
+      next.autoPlay = value
     }
-    next.autoPlay = value
+  }
+  if ('usePublicVrms' in patch) {
+    const value = patch.usePublicVrms
+    if (value === null || value === undefined) {
+      next.usePublicVrms = undefined
+    } else {
+      next.usePublicVrms = value
+    }
   }
   return next
 }
@@ -155,5 +180,6 @@ function normalizeOverrides(input: PlayerSettingsOverrides): PlayerSettingsOverr
     if (typeof value === 'number' && Number.isFinite(value)) result[key] = value
   }
   if (typeof input.autoPlay === 'boolean') result.autoPlay = input.autoPlay
+  if (typeof input.usePublicVrms === 'boolean') result.usePublicVrms = input.usePublicVrms
   return result
 }
