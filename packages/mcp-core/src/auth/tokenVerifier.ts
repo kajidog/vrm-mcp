@@ -4,6 +4,7 @@ export interface AuthInfo {
   token: string
   clientId: string
   scopes: string[]
+  audience?: string | string[]
   expiresAt?: number
   extra?: Record<string, unknown>
 }
@@ -19,18 +20,31 @@ function getRemoteJwkSet(jwksUri: string): ReturnType<typeof createRemoteJWKSet>
   return jwks
 }
 
-export async function verifyAccessToken(token: string, jwksUri: string, issuer?: string): Promise<AuthInfo> {
+export async function verifyAccessToken(
+  token: string,
+  jwksUri: string,
+  issuer?: string,
+  audience?: string,
+  requiredScopes: string[] = []
+): Promise<AuthInfo> {
   const JWKS = getRemoteJwkSet(jwksUri)
 
   try {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer,
+      audience,
     })
+    const scopes = typeof payload.scope === 'string' ? payload.scope.split(' ').filter(Boolean) : []
+    const missingScope = requiredScopes.find((scope) => !scopes.includes(scope))
+    if (missingScope) {
+      throw new Error(`Missing required scope: ${missingScope}`)
+    }
 
     return {
       token,
       clientId: (payload.azp as string) || (payload.client_id as string) || 'unknown',
-      scopes: typeof payload.scope === 'string' ? payload.scope.split(' ') : [],
+      scopes,
+      audience: payload.aud,
       expiresAt: payload.exp,
       extra: {
         sub: payload.sub,

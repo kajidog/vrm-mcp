@@ -26,9 +26,10 @@ import {
   extractPoseSegmentsFromResult,
 } from '../utils/vrmPayload'
 import { resolveVrmSource } from '../utils/vrmSource'
-import { ensurePlayableSegments, mergeSegmentAudio } from './segmentAudio'
+import { ensurePlayableSegments, mergeSegmentAudio, mergeSegmentAudioIndexes } from './segmentAudio'
 import { useLipSync } from './useLipSync'
 import { usePlayerLoadingState } from './usePlayerLoadingState'
+import { useRenderSettings } from './useRenderSettings'
 import { useRevokableObjectUrl } from './useRevokableObjectUrl'
 import { useSegmentPlayback } from './useSegmentPlayback'
 import {
@@ -71,9 +72,11 @@ export function useVrmPlayerApp(): VrmPlayerState {
   const speakerIconRequestRef = useRef(0)
   const activeModelRef = useRef<VrmPlayerState['activeModel']>(null)
   const poseLibraryRef = useRef<Map<string, PoseSource>>(new Map())
+  const audioLoadRequestRef = useRef(0)
   // リップシンク制御。AudioContext は audio 生成の useEffect で attach し、
   // セグメント切替で setSegment を呼ぶ。mouthRef を VrmPlayerState に流して VRMScene で参照する。
   const lipSync = useLipSync()
+  const { settings: renderSettings } = useRenderSettings()
   // ホストからツール入力 / 結果を一度でも受け取ったかどうか。
   // 受け取った後に初期デフォルトの非同期適用が遅れて返ってきても上書きしないためのガード。
   const toolInteractedRef = useRef(false)
@@ -137,6 +140,10 @@ export function useVrmPlayerApp(): VrmPlayerState {
   useEffect(() => {
     cleanupPlayedKeys()
   }, [])
+
+  useEffect(() => {
+    lipSync.setMoraTimingOffsetMs(renderSettings.moraTimingOffsetMs)
+  }, [lipSync, renderSettings.moraTimingOffsetMs])
 
   const setResolvedSource = (nextSource: VrmPlayerState['source']) => {
     sourceRef.current = nextSource
@@ -393,10 +400,37 @@ export function useVrmPlayerApp(): VrmPlayerState {
             const viewUUID = typeof meta.viewUUID === 'string' && meta.viewUUID.trim() ? meta.viewUUID : undefined
             let segmentsForPlayback = nextSegments
             if (viewUUID) {
+              const requestId = audioLoadRequestRef.current + 1
+              audioLoadRequestRef.current = requestId
               try {
-                segmentsForPlayback = await mergeSegmentAudio(createdApp, nextSegments, viewUUID, (progress) =>
-                  setLoadingState('preparingAudio', progress)
+                const initialIndexes = nextSegments.slice(0, Math.min(2, nextSegments.length)).map((_, index) => index)
+                segmentsForPlayback = await mergeSegmentAudioIndexes(
+                  createdApp,
+                  nextSegments,
+                  viewUUID,
+                  initialIndexes,
+                  (progress) => setLoadingState('preparingAudio', progress)
                 )
+                ensurePlayableSegments(segmentsForPlayback.slice(0, initialIndexes.length), viewUUID)
+                playback.startPlayback(segmentsForPlayback, { autoPlay: consumeAutoPlay(meta) })
+                void updateSpeakerIcon(segmentsForPlayback[0]?.speaker)
+                setLoadingState('ready', 100)
+
+                const remainingIndexes = nextSegments
+                  .map((_, index) => index)
+                  .filter((index) => !initialIndexes.includes(index))
+                if (remainingIndexes.length > 0) {
+                  void mergeSegmentAudioIndexes(createdApp, segmentsForPlayback, viewUUID, remainingIndexes)
+                    .then((completeSegments) => {
+                      if (requestId !== audioLoadRequestRef.current) return
+                      playback.updateSegments(completeSegments)
+                    })
+                    .catch((error) => {
+                      if (requestId !== audioLoadRequestRef.current) return
+                      setPlaybackError(`後続セグメントの音声取得に失敗しました: ${String(error)}`)
+                    })
+                }
+                return
               } catch (error) {
                 if (!isMissingPlayerSessionError(error)) throw error
                 setLoadingState('preparingAudio', 65)

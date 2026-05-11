@@ -144,6 +144,15 @@ export function useSegmentPlayback({ lipSync, resolvePose, resolveExpression, on
     playSegmentAt(0, playbackVersionRef.current)
   }
 
+  const updateSegments = (next: PoseSegment[]) => {
+    segmentsRef.current = next
+    setSegments(next)
+    const currentSegment = currentSegmentIndex !== null ? next[currentSegmentIndex] : null
+    if (currentSegment) {
+      setExpression(resolveExpression(currentSegment))
+    }
+  }
+
   const play = () => {
     const list = segmentsRef.current
     if (list.length === 0) return
@@ -241,6 +250,7 @@ export function useSegmentPlayback({ lipSync, resolvePose, resolveExpression, on
     hasSegments: segments.length > 0,
     currentSegmentText: currentSegmentIndex !== null ? (segments[currentSegmentIndex]?.text ?? null) : null,
     startPlayback,
+    updateSegments,
     stopPlayback,
     clearSegments,
     refreshCurrentVisuals,

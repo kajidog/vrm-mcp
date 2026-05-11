@@ -306,7 +306,7 @@ describe('speak_player Phase 5', () => {
     expect(structured.segments[2].expressionName).toBeUndefined()
   })
 
-  it('pose 未指定セグメントは pose プロパティを保存しない（UI 側で idle 扱い）', async () => {
+  it('pose 未指定セグメントは idle に解決される', async () => {
     const model = await registry.register({ name: 'A', speakerId: 1, vrmBase64: SAMPLE_VRM_BASE64 })
     const harness = buildHarness(registry)
 
@@ -317,7 +317,57 @@ describe('speak_player Phase 5', () => {
 
     expect(result.isError).toBeUndefined()
     const structured = result.structuredContent as { segments: Array<{ pose?: string }> }
-    expect(structured.segments[0].pose).toBeUndefined()
+    expect(structured.segments[0].pose).toBe('idle')
     expect(structured.segments[1].pose).toBe('wave')
+  })
+
+  it('未登録 pose は idle fallback と理由を返す', async () => {
+    const model = await registry.register({ name: 'A', speakerId: 1, vrmBase64: SAMPLE_VRM_BASE64 })
+    const harness = buildHarness(registry)
+
+    const result = await harness.invoke({
+      modelId: model.id,
+      segments: [{ pose: 'missing-pose', text: 'fallback' }],
+    })
+
+    expect(result.isError).toBeUndefined()
+    const structured = result.structuredContent as {
+      segments: Array<{ requestedPose?: string; pose?: string; poseFallbackReason?: string }>
+    }
+    expect(structured.segments[0]).toMatchObject({
+      requestedPose: 'missing-pose',
+      pose: 'idle',
+      poseFallbackReason: 'Pose not available on model: missing-pose',
+    })
+  })
+
+  it('segments[].speedScale を合成に渡し explicitSpeedScale として返す', async () => {
+    const model = await registry.register({ name: 'A', speakerId: 1, vrmBase64: SAMPLE_VRM_BASE64 })
+    const calls: Array<{ text: string; speedScale?: number }> = []
+    const harness = buildHarness(registry, {
+      synthesizeWithCache: async ({ text, speaker, speedScale }) => {
+        calls.push({ text, speedScale })
+        return {
+          audioBase64: `audio-for-${speaker}-${text}`,
+          text,
+          speaker,
+          speakerName: `Speaker ${speaker}`,
+          speedScale: speedScale ?? 1,
+        }
+      },
+    })
+
+    const result = await harness.invoke({
+      modelId: model.id,
+      segments: [{ text: 'fast', speedScale: 1.4 }, { text: 'normal' }],
+    })
+
+    expect(result.isError).toBeUndefined()
+    expect(calls).toEqual([{ text: 'fast', speedScale: 1.4 }])
+    const structured = result.structuredContent as {
+      segments: Array<{ speedScale?: number; explicitSpeedScale?: number }>
+    }
+    expect(structured.segments[0]).toMatchObject({ speedScale: 1.4, explicitSpeedScale: 1.4 })
+    expect(structured.segments[1]).toMatchObject({ speedScale: 1 })
   })
 })

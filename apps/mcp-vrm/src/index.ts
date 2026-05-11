@@ -2,7 +2,7 @@
 // MCP TTS エントリーポイント
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createOAuthConfig, isNodejs, launchServer, setSessionConfig } from '@kajidog/mcp-core'
 import { getConfig, getConfigTemplate, getHelpText } from './config.js'
@@ -21,37 +21,9 @@ interface IndexServerConfig {
   isHttpMode: boolean
 }
 
-/** CLI実行かどうかを判定 */
-function isCLI(): boolean {
-  if (!isNodejs() || !process.argv) return false
-
-  const isNpmStart = process.env?.npm_lifecycle_event === 'start'
-  const argv1 = process.argv[1] || ''
-  const isDirectExecution =
-    argv1.includes('vrm-mcp') ||
-    argv1.endsWith('dist/index.js') ||
-    argv1.endsWith('src/index.ts') ||
-    argv1.includes('index.js') ||
-    argv1.includes('npx')
-
-  // 設定からHTTPモードを取得（CLI引数または環境変数）
-  const config = getConfig()
-  const isForceMode = config.httpMode
-
-  // ESM環境でのメインモジュール判定
-  const isMainModule =
-    process.argv[1] === fileURLToPath(import.meta.url) ||
-    process.argv0?.includes('node') ||
-    process.argv0?.includes('bun')
-
-  return isNpmStart || isDirectExecution || isForceMode || isMainModule
-}
-
-/** NPX経由実行かどうかを判定 */
-function isNpx(): boolean {
-  if (!isNodejs()) return false
-
-  return !!(process.env?.npm_execpath && process.argv[1] && !process.argv[1].includes('node_modules'))
+function isEntrypoint(metaUrl: string): boolean {
+  if (!isNodejs() || !process.argv?.[1]) return false
+  return fileURLToPath(metaUrl) === resolve(process.argv[1])
 }
 
 /**
@@ -111,28 +83,15 @@ async function startMCPServer(): Promise<void> {
     process.exit(0)
   }
 
-  // CLI実行またはNPX実行の場合のみサーバーを起動
-  const shouldStart = isCLI() || isNpx()
-
   const config = getConfig()
   const serverConfig = getServerConfig()
 
-  // HTTPモードの場合のみログを出力
   if (serverConfig.isHttpMode) {
-    console.error('Environment detection:', {
-      isCLI: isCLI(),
-      isNpx: isNpx(),
-      shouldStart,
-    })
-
-    console.error('Server configuration:', serverConfig)
-  }
-
-  if (!shouldStart) {
-    if (serverConfig.isHttpMode) {
-      console.error('Running as library, server startup skipped')
-    }
-    return // ライブラリとして使用されている
+    console.error(
+      `VRM MCP HTTP mode: host=${serverConfig.host} port=${serverConfig.port} env=${
+        serverConfig.isDevelopment ? 'development' : 'production'
+      }`
+    )
   }
 
   // mcp-core のランチャーを使用してサーバーを起動
@@ -163,10 +122,9 @@ async function startMCPServer(): Promise<void> {
   })
 }
 
-// Node.js環境での自動起動
-if (isNodejs()) {
+if (isEntrypoint(import.meta.url)) {
   startMCPServer().catch((error) => {
     console.error('Initialization error:', error)
-    // ライブラリとしての利用に支障がないように、エラーは無視
+    process.exit(1)
   })
 }

@@ -5,7 +5,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { type Context, Hono, type Next } from 'hono'
 import { cors } from 'hono/cors'
 
-import { type OAuthConfig, bearerAuth, createProtectedResourceMetadata } from './auth/index.js'
+import { type AuthVariables, type OAuthConfig, bearerAuth, createProtectedResourceMetadata } from './auth/index.js'
 import type { BaseServerConfig } from './config.js'
 import { deleteSessionConfig } from './session.js'
 
@@ -37,11 +37,13 @@ export interface CreateHttpAppOptions {
   /** セッション終了時のコールバック */
   onSessionClosed?: (sessionId: string) => void
   /** MCP 以外のHTTPルートを追加するための拡張フック */
-  configureApp?: (app: Hono) => void
+  configureApp?: (app: Hono<{ Variables: AuthVariables }>) => void
   /** OAuth JWT Bearer 認証設定。有効時は API キー認証より優先される */
   authConfig?: OAuthConfig | null
   /** OAuth JWT Bearer 認証を適用する Hono パスパターン */
   authProtectedRoutes?: string[]
+  /** OAuth JWT Bearer 認証で route ごとに要求する scope */
+  authRequiredScopes?: Record<string, string[]>
 }
 
 /**
@@ -167,7 +169,7 @@ function validateApiKey(config: BaseServerConfig) {
  * @param options - HTTPアプリの設定オプション
  * @returns 設定済みのHonoアプリケーション
  */
-export function createHttpApp(options: CreateHttpAppOptions): Hono {
+export function createHttpApp(options: CreateHttpAppOptions): Hono<{ Variables: AuthVariables }> {
   const {
     server,
     config,
@@ -178,6 +180,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono {
     configureApp,
     authConfig,
     authProtectedRoutes = [],
+    authRequiredScopes = {},
   } = options
 
   // セッションごとのtransportを管理
@@ -186,7 +189,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono {
   /**
    * MCP エンドポイントハンドラー
    */
-  async function handleMCP(c: Context): Promise<Response> {
+  async function handleMCP(c: Context<{ Variables: AuthVariables }>): Promise<Response> {
     console.log(`Received ${c.req.method} request for MCP`)
 
     const sessionId = c.req.header('mcp-session-id')
@@ -271,7 +274,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono {
   }
 
   // アプリケーションのセットアップ
-  const app: Hono = new Hono()
+  const app: Hono<{ Variables: AuthVariables }> = new Hono()
 
   // CORSを設定
   const allowHeaders = [
@@ -300,7 +303,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono {
   if (authConfig) {
     app.get('/.well-known/oauth-protected-resource', (c) => c.json(createProtectedResourceMetadata(authConfig)))
     for (const route of authProtectedRoutes) {
-      app.use(route, bearerAuth(authConfig))
+      app.use(route, bearerAuth(authConfig, authRequiredScopes[route] ?? []))
     }
   } else {
     app.use('/mcp', validateApiKey(config))

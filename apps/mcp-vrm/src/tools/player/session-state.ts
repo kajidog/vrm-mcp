@@ -21,13 +21,17 @@ export interface PlayerSegmentState {
   prePhonemeLength?: number
   postPhonemeLength?: number
   pauseLengthScale?: number
+  explicitSpeedScale?: number
+  requestedPose?: string
   pose?: string
+  poseFallbackReason?: string
   emotion?: string
   expressionName?: string
   expressionWeight?: number
 }
 
 export interface PlayerSessionState {
+  userId?: string
   segments: PlayerSegmentState[]
   updatedAt: number
 }

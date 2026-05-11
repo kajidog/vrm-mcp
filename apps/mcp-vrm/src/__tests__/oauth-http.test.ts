@@ -155,6 +155,11 @@ describe('VRM OAuth HTTP options', () => {
     expect(createVrmOAuthHttpOptions(authConfig)).toEqual({
       authConfig,
       authProtectedRoutes: [...VRM_AUTH_PROTECTED_ROUTES],
+      authRequiredScopes: {
+        '/mcp': ['mcp:tools'],
+        '/vrms/:fileName': ['mcp:resources'],
+        '/poses/:fileName': ['mcp:resources'],
+      },
     })
   })
 
@@ -162,6 +167,7 @@ describe('VRM OAuth HTTP options', () => {
     expect(createVrmOAuthHttpOptions(null)).toEqual({
       authConfig: null,
       authProtectedRoutes: [],
+      authRequiredScopes: {},
     })
   })
 })

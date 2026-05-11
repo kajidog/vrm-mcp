@@ -1,6 +1,6 @@
 import type { App } from '@modelcontextprotocol/ext-apps'
 import { useEffect, useState } from 'react'
-import { DPR_OPTIONS, useRenderSettings } from '../hooks/useRenderSettings'
+import { DPR_OPTIONS, POSE_EASING_OPTIONS, useRenderSettings } from '../hooks/useRenderSettings'
 import {
   type PlayerSettings,
   fetchPlayerSettingsOnServer,
@@ -172,6 +172,30 @@ export function SettingsView({ app, busy, onBack, onOpenPoses, onApplied }: Sett
             checked={renderSettings.blinkEnabled}
             defaultValue={true}
             onChange={(blinkEnabled) => updateRenderSettings({ blinkEnabled })}
+          />
+          <SettingSelect
+            label="ポーズ遷移"
+            value={renderSettings.poseEasing}
+            options={POSE_EASING_OPTIONS}
+            onChange={(poseEasing) => updateRenderSettings({ poseEasing })}
+          />
+          <SettingNumber
+            label="表情フェード(ms)"
+            value={renderSettings.expressionTransitionMs}
+            min={0}
+            max={500}
+            step={10}
+            defaultValue={120}
+            onChange={(expressionTransitionMs) => updateRenderSettings({ expressionTransitionMs })}
+          />
+          <SettingNumber
+            label="口パク補正(ms)"
+            value={renderSettings.moraTimingOffsetMs}
+            min={-200}
+            max={200}
+            step={10}
+            defaultValue={0}
+            onChange={(moraTimingOffsetMs) => updateRenderSettings({ moraTimingOffsetMs })}
           />
         </div>
       </div>

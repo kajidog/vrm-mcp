@@ -33,6 +33,8 @@ interface VRMSceneProps {
   mouthRef?: MouthRef
   // 自動瞬き。OFF のときは blink 系表情へは何も書き込まない。
   blinkEnabled?: boolean
+  poseEasing?: 'linear' | 'easeInOutQuad'
+  expressionTransitionMs?: number
   // VRM ロード完了後、Canvas へ「キャラ上半身付近の y」を通知する。
   onCenterReady?: (y: number) => void
   // VRM ロード完了後、Canvas へ「頭ボーンのワールド座標」を通知する。
@@ -74,6 +76,10 @@ function easeInOutQuad(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
 }
 
+function easePose(t: number, easing: 'linear' | 'easeInOutQuad'): number {
+  return easing === 'linear' ? t : easeInOutQuad(t)
+}
+
 /**
  * 渡された VrmSource を three.js シーンに常駐表示するコンポーネント。
  * `source.data`（バイナリ）か `source.src`（URL）のいずれかからロードする。
@@ -85,6 +91,8 @@ export function VRMScene({
   expression,
   mouthRef,
   blinkEnabled = true,
+  poseEasing = 'easeInOutQuad',
+  expressionTransitionMs = 120,
   onCenterReady,
   onHeadReady,
   onExpressionsReady,
@@ -100,6 +108,9 @@ export function VRMScene({
   const poseRef = useRef<PoseSource>(pose ?? DEFAULT_POSE_SOURCE)
   const expressionRef = useRef<{ name: string; weight: number } | null>(expression ?? null)
   const blinkEnabledRef = useRef(blinkEnabled)
+  const poseEasingRef = useRef(poseEasing)
+  const expressionTransitionMsRef = useRef(expressionTransitionMs)
+  const expressionWeightsRef = useRef<Map<string, number>>(new Map())
   const blinkStateRef = useRef<BlinkState>({ nextAt: nextBlinkInterval(), progress: null })
   const vrmaCacheRef = useRef<Map<string, Promise<VRMAnimation>>>(new Map())
   const mixerRef = useRef<AnimationMixer | null>(null)
@@ -128,6 +139,14 @@ export function VRMScene({
       blinkStateRef.current = { nextAt: nextBlinkInterval(), progress: null }
     }
   }, [blinkEnabled])
+
+  useEffect(() => {
+    poseEasingRef.current = poseEasing
+  }, [poseEasing])
+
+  useEffect(() => {
+    expressionTransitionMsRef.current = expressionTransitionMs
+  }, [expressionTransitionMs])
 
   // onError / onCenterReady を ref 経由で参照し、コールバック差し替えで useEffect が再実行されないようにする。
   const onErrorRef = useRef(onError)
@@ -387,7 +406,7 @@ export function VRMScene({
     if (transition) {
       transition.elapsed += delta
       const rawT = Math.min(1, transition.elapsed / transition.duration)
-      const eased = easeInOutQuad(rawT)
+      const eased = easePose(rawT, poseEasingRef.current)
       const blendBack = 1 - eased
       if (rawT >= 1) {
         poseTransitionRef.current = null
@@ -400,11 +419,17 @@ export function VRMScene({
     const em = vrm.expressionManager
     const expression = expressionRef.current
     if (em) {
+      const weights = expressionWeightsRef.current
+      const transitionSeconds = Math.max(0, expressionTransitionMsRef.current / 1000)
+      const alpha = transitionSeconds <= 0 ? 1 : Math.min(1, delta / transitionSeconds)
       for (const name of Object.keys(em.expressionMap)) {
-        if (!em.mouthExpressionNames.includes(name)) em.setValue(name, 0)
-      }
-      if (expression && em.getExpression(expression.name)) {
-        em.setValue(expression.name, expression.weight)
+        if (em.mouthExpressionNames.includes(name)) continue
+        const target = expression?.name === name && em.getExpression(name) ? expression.weight : 0
+        const current = weights.get(name) ?? 0
+        const next = current + (target - current) * alpha
+        const normalized = Math.abs(next) < 1e-4 ? 0 : next
+        weights.set(name, normalized)
+        em.setValue(name, normalized)
       }
     }
     const mouth = mouthRef?.current

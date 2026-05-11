@@ -8,11 +8,17 @@ export interface RenderSettings {
   dprMax: number
   // 自動瞬きの有無。
   blinkEnabled: boolean
+  poseEasing: 'linear' | 'easeInOutQuad'
+  expressionTransitionMs: number
+  moraTimingOffsetMs: number
 }
 
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
   dprMax: 1.5,
   blinkEnabled: true,
+  poseEasing: 'easeInOutQuad',
+  expressionTransitionMs: 120,
+  moraTimingOffsetMs: 0,
 }
 
 export const DPR_OPTIONS: Array<{ value: number; label: string }> = [
@@ -20,6 +26,11 @@ export const DPR_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 1.5, label: '高 (1.5×)' },
   { value: 2.0, label: '最高 (2.0×)' },
   { value: 3.0, label: 'ネイティブ (3.0×)' },
+]
+
+export const POSE_EASING_OPTIONS: Array<{ value: RenderSettings['poseEasing']; label: string }> = [
+  { value: 'easeInOutQuad', label: 'なめらか' },
+  { value: 'linear', label: '一定' },
 ]
 
 function load(): RenderSettings {
@@ -32,6 +43,18 @@ function load(): RenderSettings {
       dprMax: typeof parsed.dprMax === 'number' && parsed.dprMax > 0 ? parsed.dprMax : DEFAULT_RENDER_SETTINGS.dprMax,
       blinkEnabled:
         typeof parsed.blinkEnabled === 'boolean' ? parsed.blinkEnabled : DEFAULT_RENDER_SETTINGS.blinkEnabled,
+      poseEasing:
+        parsed.poseEasing === 'linear' || parsed.poseEasing === 'easeInOutQuad'
+          ? parsed.poseEasing
+          : DEFAULT_RENDER_SETTINGS.poseEasing,
+      expressionTransitionMs:
+        typeof parsed.expressionTransitionMs === 'number' && Number.isFinite(parsed.expressionTransitionMs)
+          ? Math.min(1000, Math.max(0, parsed.expressionTransitionMs))
+          : DEFAULT_RENDER_SETTINGS.expressionTransitionMs,
+      moraTimingOffsetMs:
+        typeof parsed.moraTimingOffsetMs === 'number' && Number.isFinite(parsed.moraTimingOffsetMs)
+          ? Math.min(200, Math.max(-200, parsed.moraTimingOffsetMs))
+          : DEFAULT_RENDER_SETTINGS.moraTimingOffsetMs,
     }
   } catch {
     return DEFAULT_RENDER_SETTINGS

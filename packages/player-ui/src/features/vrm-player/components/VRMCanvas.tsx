@@ -255,6 +255,8 @@ export function VRMCanvas({
               expression={expression}
               mouthRef={mouthRef}
               blinkEnabled={renderSettings.blinkEnabled}
+              poseEasing={renderSettings.poseEasing}
+              expressionTransitionMs={renderSettings.expressionTransitionMs}
               onCenterReady={setCenterY}
               onHeadReady={setHeadPosition}
               onExpressionsReady={onExpressionsReady}

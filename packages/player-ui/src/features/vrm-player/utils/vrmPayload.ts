@@ -100,7 +100,9 @@ export function extractModelIdFromInput(params: McpUiToolInputNotification['para
 }
 
 export interface PoseSegment {
+  requestedPose?: string
   pose?: string
+  poseFallbackReason?: string
   emotion?: string
   expressionName?: string
   expressionWeight?: number
@@ -128,7 +130,9 @@ function pickPoseSegments(source: unknown): PoseSegment[] | null {
     if (!text) continue
     result.push({
       text,
+      requestedPose: readString(segment, 'requestedPose'),
       pose: readString(segment, 'pose'),
+      poseFallbackReason: readString(segment, 'poseFallbackReason'),
       emotion: readString(segment, 'emotion'),
       expressionName: readString(segment, 'expressionName'),
       expressionWeight: typeof segment.expressionWeight === 'number' ? segment.expressionWeight : undefined,

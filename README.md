@@ -2,15 +2,38 @@
 
 開発中
 
-`vrm-mcp` は、ChatGPT や Claude などの MCP 対応チャット上で、好きなVRMモデルを表示しながら会話できるサーバーです。VOICEVOX / sakuraai を使った音声合成と、リップシンク・表情・ポーズを組み合わせた再生に対応しています。
+`vrm-mcp` は、ChatGPT や Claude などの MCP 対応チャット上で、好きなVRMモデルを表示しながら会話できるサーバーです。VOICEVOX / さくらのAI Engine を使った音声合成と、リップシンク・表情・ポーズを組み合わせた再生に対応しています。
 
 ## 主な機能
 
-- チャット上で VRM キャラクターを表示し、音声つきで会話できる
-- VRMモデルを複数登録し、会話ごとに利用モデルを切り替えできる
-- 感情（neutral/happy/angry/sad など）とポーズを指定して発話できる
-- 音声再生に合わせたリップシンク・表情反映に対応
-- VOICEVOX / sakuraai をTTSエンジンとして利用可能
+ChatGPT / Claude など MCP Apps 対応チャットクライアントの会話画面内で 3D VRM プレイヤーを表示します。モデル登録・ポーズ管理・設定も同じ画面内の UI から行います。
+
+### プレイヤー
+- 母音タイミング（mora）駆動のリップシンク。mora 非対応エンジンは AnalyserNode の RMS にフォールバック
+- 自動瞬き、lookAt（カメラ追従）、Spring Bone の初期姿勢リセット
+- ポーズのクロスフェード遷移
+- VRM 1.0 / VRM 0.x のロード
+- Inline / Fullscreen 切替（ホスト側の `requestDisplayMode` を使用）
+- 先頭セグメントを先行合成、残りは UI から要求された時点で合成
+
+### 発話制御
+- 1 発話を複数セグメントに分け、セグメントごとに `emotion` / `pose` / `speedScale` を指定
+- 感情ごとに VRM 表情名・話者 ID をモデル単位でバインド
+- VOICEVOX ユーザー辞書連携（対応エンジン時のみ）
+
+### モデル管理（チャット内 UI）
+- VRM の登録 / 編集 / バイナリ差し替え / 削除
+- ビルトインポーズと、ユーザー登録の VRMA
+- 話者プレビュー（テスト発話 / ポートレートアイコン）
+
+### マルチユーザー
+- OAuth JWT Bearer（Supabase / 任意の JWKS / ローカル開発用認証サーバー）
+- VRM・ポーズ・プレイヤー設定をユーザーごとに分離
+- 公開 VRM 共有のオプトイン
+
+### TTS エンジン
+- VOICEVOX / さくらの AI Engine
+- ディスクキャッシュと in-flight 重複排除
 
 > 補足: `speak_player` / `open_model_manager` は MCP Apps UI を開けるクライアントで利用します。
 

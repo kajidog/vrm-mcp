@@ -22,6 +22,7 @@ export interface LipSyncController {
   setSegment: (segment: PoseSegment | null) => void
   /** ユーザー操作起源の play() 直前に呼ぶ。autoplay policy 対策。 */
   resumeContext: () => void
+  setMoraTimingOffsetMs: (offsetMs: number) => void
   /** unmount 時に呼ぶ。RAF と AudioContext を解放する。 */
   dispose: () => void
 }
@@ -114,6 +115,7 @@ export function useLipSync(): LipSyncController {
   const analyserBufRef = useRef<Uint8Array | null>(null)
   const modeRef = useRef<Mode>('idle')
   const timelineRef = useRef<MoraEvent[]>([])
+  const moraTimingOffsetMsRef = useRef(0)
   const rafRef = useRef<number | null>(null)
   const disposedRef = useRef(false)
 
@@ -123,7 +125,7 @@ export function useLipSync(): LipSyncController {
     const target: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 }
 
     if (modeRef.current === 'mora' && audio) {
-      const now = audio.currentTime
+      const now = audio.currentTime + moraTimingOffsetMsRef.current / 1000
       const idx = findEventIndex(timelineRef.current, now)
       if (idx >= 0) {
         const ev = timelineRef.current[idx]
@@ -238,6 +240,10 @@ export function useLipSync(): LipSyncController {
     }
   }
 
+  const setMoraTimingOffsetMs = (offsetMs: number) => {
+    moraTimingOffsetMsRef.current = Number.isFinite(offsetMs) ? Math.min(200, Math.max(-200, offsetMs)) : 0
+  }
+
   const dispose = () => {
     disposedRef.current = true
     if (rafRef.current !== null) {
@@ -277,6 +283,7 @@ export function useLipSync(): LipSyncController {
       attachAudio,
       setSegment,
       resumeContext,
+      setMoraTimingOffsetMs,
       dispose,
     }
   }

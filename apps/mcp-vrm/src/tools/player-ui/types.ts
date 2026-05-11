@@ -34,13 +34,17 @@ export type PlayerSegmentState = {
   prePhonemeLength?: number
   postPhonemeLength?: number
   pauseLengthScale?: number
+  explicitSpeedScale?: number
+  requestedPose?: string
   pose?: string
+  poseFallbackReason?: string
   emotion?: string
   expressionName?: string
   expressionWeight?: number
 }
 
 export type PlayerSessionState = {
+  userId?: string
   segments: PlayerSegmentState[]
   updatedAt: number
 }

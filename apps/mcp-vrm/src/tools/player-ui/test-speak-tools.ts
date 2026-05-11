@@ -105,6 +105,17 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
             isError: true,
           }
         }
+        if (state.userId && state.userId !== userId) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ error: 'session not found', viewUUID }),
+              },
+            ],
+            isError: true,
+          }
+        }
 
         if (index !== undefined && index >= state.segments.length) {
           return {

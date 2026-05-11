@@ -2,19 +2,21 @@ import type { App } from '@modelcontextprotocol/ext-apps'
 import type { PoseSegment } from '../utils/vrmPayload'
 import { fetchSegmentsAudioOnServer } from './vrmPlayerToolClient'
 
-export async function mergeSegmentAudio(
+export async function mergeSegmentAudioIndexes(
   app: App,
   segments: PoseSegment[],
   viewUUID: string,
+  indexes: number[],
   onProgress?: (progress: number) => void
 ): Promise<PoseSegment[]> {
   onProgress?.(65)
-  const audioResults = await Promise.all(segments.map((_, index) => fetchSegmentsAudioOnServer(app, viewUUID, index)))
+  const audioResults = await Promise.all(indexes.map((index) => fetchSegmentsAudioOnServer(app, viewUUID, index)))
   onProgress?.(95)
 
   const byIndex = new Map(audioResults.flatMap((result) => result.segments).map((entry) => [entry.index, entry]))
   return segments.map((segment, index) => {
     const entry = byIndex.get(index)
+    if (!entry) return segment
     if (!entry?.audioBase64) {
       throw new Error(`セグメント ${index + 1} の音声データを取得できませんでした。`)
     }
@@ -28,6 +30,21 @@ export async function mergeSegmentAudio(
       postPhonemeLength: entry.postPhonemeLength ?? segment.postPhonemeLength,
     }
   })
+}
+
+export async function mergeSegmentAudio(
+  app: App,
+  segments: PoseSegment[],
+  viewUUID: string,
+  onProgress?: (progress: number) => void
+): Promise<PoseSegment[]> {
+  return mergeSegmentAudioIndexes(
+    app,
+    segments,
+    viewUUID,
+    segments.map((_, index) => index),
+    onProgress
+  )
 }
 
 export function ensurePlayableSegments(segments: PoseSegment[], viewUUID: string | undefined): void {

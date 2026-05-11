@@ -70,6 +70,10 @@ let vrmRegistryStore: VrmRegistryStore | null = null
 let poseRegistryStore: PoseRegistryStore | null = null
 let playerSettingsStore: PlayerSettingsStore | null = null
 let speakerCache: SpeakerEntry[] | null = null
+const inFlightSyntheses = new Map<string, Promise<SynthesizeResult>>()
+
+type ResolvedSynthesizeInput = Required<Pick<SynthesizeInput, 'text' | 'speaker' | 'speedScale'>> &
+  Omit<SynthesizeInput, 'text' | 'speaker' | 'speedScale'>
 
 export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
   const { config, engine, capabilities } = deps
@@ -141,109 +145,101 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
     }))
   }
 
-  const synthesizeWithCache = async (input: SynthesizeInput): Promise<SynthesizeResult> => {
-    const {
-      text,
-      speaker,
-      audioQuery,
-      speedScale,
-      intonationScale,
-      volumeScale,
-      prePhonemeLength,
-      postPhonemeLength,
-      pauseLengthScale,
-      accentPhrases,
-    } = playerSettings.applyDefaults(input, input.userId)
-    const speakerName = await getSpeakerName(speaker)
+  const resolveSynthesisInput = (input: SynthesizeInput): ResolvedSynthesizeInput => {
+    return playerSettings.applyDefaults(input, input.userId) as ResolvedSynthesizeInput
+  }
 
-    // アクセント編集時は /mora_data でピッチ再計算してからキャッシュキーを作る。
-    // これにより、同じアクセント編集結果で正しくキャッシュヒットする。
-    let effectiveAudioQuery = audioQuery
+  const refreshMoraData = async (resolved: ResolvedSynthesizeInput): Promise<AudioQuery | undefined> => {
+    const { audioQuery, accentPhrases, speaker } = resolved
     if (
-      capabilities.moraData &&
-      audioQuery &&
-      accentPhrases &&
-      accentPhrases.length > 0 &&
-      audioQuery.accent_phrases?.length > 0
+      !capabilities.moraData ||
+      !audioQuery ||
+      !accentPhrases ||
+      accentPhrases.length === 0 ||
+      audioQuery.accent_phrases?.length === 0
     ) {
-      try {
-        const updated = await playerEngine.updateMoraData(audioQuery.accent_phrases, speaker)
-        effectiveAudioQuery = { ...audioQuery, accent_phrases: updated }
-      } catch (e) {
-        console.warn('[synthesizeWithCache] /mora_data 再計算失敗、元のピッチ値を使用:', e)
-      }
+      return audioQuery
     }
+    try {
+      const updated = await playerEngine.updateMoraData(accentPhrases, speaker)
+      return { ...audioQuery, accent_phrases: updated }
+    } catch (e) {
+      console.warn('[synthesizeWithCache] /mora_data 再計算失敗、元のピッチ値を使用:', e)
+      return audioQuery
+    }
+  }
 
-    const cacheKey = createAudioCacheKey({
+  const buildCacheKey = (resolved: ResolvedSynthesizeInput, effectiveAudioQuery?: AudioQuery): string =>
+    createAudioCacheKey({
       engineId: playerEngine.id,
       baseUrl: playerEngine.baseUrl,
-      text,
-      speaker,
+      text: resolved.text,
+      speaker: resolved.speaker,
       audioQuery: effectiveAudioQuery,
-      speedScale,
+      speedScale: resolved.speedScale,
       dictionaryRevision: getPlayerDictionaryRevision(),
-      intonationScale,
-      volumeScale,
-      prePhonemeLength,
-      postPhonemeLength,
-      pauseLengthScale,
-      accentPhrases,
+      intonationScale: resolved.intonationScale,
+      volumeScale: resolved.volumeScale,
+      prePhonemeLength: resolved.prePhonemeLength,
+      postPhonemeLength: resolved.postPhonemeLength,
+      pauseLengthScale: resolved.pauseLengthScale,
+      accentPhrases: resolved.accentPhrases,
     })
-    const cachedBase64 = cache.readCachedBase64(cacheKey)
 
-    if (cachedBase64) {
-      // キャッシュヒット時でも、UI復元に必要な query メタデータは返す。
-      let cachedQuery = effectiveAudioQuery
-      if (!cachedQuery) {
-        const generated = await playerEngine.generateQuery(text, speaker)
-        if (accentPhrases) generated.accent_phrases = accentPhrases
-        generated.speedScale = speedScale
-        if (intonationScale !== undefined) generated.intonationScale = intonationScale
-        if (volumeScale !== undefined) generated.volumeScale = volumeScale
-        if (prePhonemeLength !== undefined) generated.prePhonemeLength = prePhonemeLength
-        if (postPhonemeLength !== undefined) generated.postPhonemeLength = postPhonemeLength
-        if (pauseLengthScale !== undefined) generated.pauseLengthScale = pauseLengthScale
-        cachedQuery = generated
-      }
-      return {
-        audioBase64: cachedBase64,
-        text,
-        speaker,
-        speakerName,
-        kana: cachedQuery?.kana,
-        audioQuery: cachedQuery,
-        speedScale: cachedQuery?.speedScale ?? speedScale,
-        intonationScale: cachedQuery?.intonationScale ?? intonationScale,
-        volumeScale: cachedQuery?.volumeScale ?? volumeScale,
-        prePhonemeLength: cachedQuery?.prePhonemeLength ?? prePhonemeLength,
-        postPhonemeLength: cachedQuery?.postPhonemeLength ?? postPhonemeLength,
-        pauseLengthScale: cachedQuery?.pauseLengthScale ?? pauseLengthScale,
-        accentPhrases: (cachedQuery?.accent_phrases as AccentPhrase[] | undefined) ?? accentPhrases,
-      }
+  const applyQueryOverrides = (query: AudioQuery, resolved: ResolvedSynthesizeInput): AudioQuery => {
+    const next = { ...query }
+    if (resolved.accentPhrases) next.accent_phrases = resolved.accentPhrases
+    next.speedScale = resolved.speedScale
+    if (resolved.intonationScale !== undefined) next.intonationScale = resolved.intonationScale
+    if (resolved.volumeScale !== undefined) next.volumeScale = resolved.volumeScale
+    if (resolved.prePhonemeLength !== undefined) next.prePhonemeLength = resolved.prePhonemeLength
+    if (resolved.postPhonemeLength !== undefined) next.postPhonemeLength = resolved.postPhonemeLength
+    if (resolved.pauseLengthScale !== undefined) next.pauseLengthScale = resolved.pauseLengthScale
+    return next
+  }
+
+  const resultFromCache = async (
+    resolved: ResolvedSynthesizeInput,
+    speakerName: string,
+    cachedBase64: string,
+    effectiveAudioQuery?: AudioQuery
+  ): Promise<SynthesizeResult> => {
+    const cachedQuery =
+      effectiveAudioQuery ??
+      applyQueryOverrides(await playerEngine.generateQuery(resolved.text, resolved.speaker), resolved)
+    return {
+      audioBase64: cachedBase64,
+      text: resolved.text,
+      speaker: resolved.speaker,
+      speakerName,
+      kana: cachedQuery.kana,
+      audioQuery: cachedQuery,
+      speedScale: cachedQuery.speedScale ?? resolved.speedScale,
+      intonationScale: cachedQuery.intonationScale ?? resolved.intonationScale,
+      volumeScale: cachedQuery.volumeScale ?? resolved.volumeScale,
+      prePhonemeLength: cachedQuery.prePhonemeLength ?? resolved.prePhonemeLength,
+      postPhonemeLength: cachedQuery.postPhonemeLength ?? resolved.postPhonemeLength,
+      pauseLengthScale: cachedQuery.pauseLengthScale ?? resolved.pauseLengthScale,
+      accentPhrases: (cachedQuery.accent_phrases as AccentPhrase[] | undefined) ?? resolved.accentPhrases,
     }
+  }
 
+  const synthesizeAndStore = async (
+    resolved: ResolvedSynthesizeInput,
+    speakerName: string,
+    cacheKey: string,
+    effectiveAudioQuery?: AudioQuery
+  ): Promise<SynthesizeResult> => {
     const resolvedQuery = effectiveAudioQuery
       ? { ...effectiveAudioQuery }
-      : await playerEngine.generateQuery(text, speaker)
-    // query 未指定時のみ、ツール引数の各パラメータを上書き適用する。
-    if (!effectiveAudioQuery && accentPhrases) resolvedQuery.accent_phrases = accentPhrases
-    if (!effectiveAudioQuery) {
-      resolvedQuery.speedScale = speedScale
-      if (intonationScale !== undefined) resolvedQuery.intonationScale = intonationScale
-      if (volumeScale !== undefined) resolvedQuery.volumeScale = volumeScale
-      if (prePhonemeLength !== undefined) resolvedQuery.prePhonemeLength = prePhonemeLength
-      if (postPhonemeLength !== undefined) resolvedQuery.postPhonemeLength = postPhonemeLength
-      if (pauseLengthScale !== undefined) resolvedQuery.pauseLengthScale = pauseLengthScale
-    }
-
-    const audioData = await playerEngine.synthesize(resolvedQuery, speaker)
+      : applyQueryOverrides(await playerEngine.generateQuery(resolved.text, resolved.speaker), resolved)
+    const audioData = await playerEngine.synthesize(resolvedQuery, resolved.speaker)
     const base64Audio = Buffer.from(audioData).toString('base64')
     await cache.writeCachedBase64(cacheKey, base64Audio)
-
     return {
       audioBase64: base64Audio,
-      text,
-      speaker,
+      text: resolved.text,
+      speaker: resolved.speaker,
       speakerName,
       kana: resolvedQuery.kana,
       audioQuery: resolvedQuery,
@@ -255,6 +251,26 @@ export function createPlayerRuntime(deps: ToolDeps): PlayerRuntime {
       postPhonemeLength: resolvedQuery.postPhonemeLength,
       pauseLengthScale: resolvedQuery.pauseLengthScale,
     }
+  }
+
+  const synthesizeWithCache = async (input: SynthesizeInput): Promise<SynthesizeResult> => {
+    const resolved = resolveSynthesisInput(input)
+    const speakerName = await getSpeakerName(resolved.speaker)
+    const effectiveAudioQuery = await refreshMoraData(resolved)
+    const cacheKey = buildCacheKey(resolved, effectiveAudioQuery)
+    const cachedBase64 = cache.readCachedBase64(cacheKey)
+    if (cachedBase64) {
+      return resultFromCache(resolved, speakerName, cachedBase64, effectiveAudioQuery)
+    }
+
+    const inFlight = inFlightSyntheses.get(cacheKey)
+    if (inFlight) return inFlight
+
+    const pending = synthesizeAndStore(resolved, speakerName, cacheKey, effectiveAudioQuery).finally(() => {
+      inFlightSyntheses.delete(cacheKey)
+    })
+    inFlightSyntheses.set(cacheKey, pending)
+    return pending
   }
 
   return {
