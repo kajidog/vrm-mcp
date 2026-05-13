@@ -91,6 +91,12 @@ pnpm build
 1. GitHub リポジトリの Settings > Pages で Source を "GitHub Actions" に設定
 2. `dist/` フォルダを gh-pages ブランチにプッシュ
 
+`/oauth/consent` への直リンクは GitHub Pages の SPA fallback 用 `404.html` で `/vrm-mcp/?p=/oauth/consent` に戻します。Supabase の Authentication > URL Configuration には、Site URL に加えて次を Redirect URL として許可してください。
+
+```text
+https://kajidog.github.io/vrm-mcp/**
+```
+
 ## 使い方
 
 MCP クライアントからこの認証画面にリダイレクトします:

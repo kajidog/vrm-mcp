@@ -5,8 +5,8 @@ export const isLocalMode = import.meta.env.VITE_AUTH_MODE === 'local'
 export const localAuthServerUrl = import.meta.env.VITE_LOCAL_AUTH_SERVER || 'http://localhost:3001'
 
 // Supabase 設定
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
+export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
 if (!isLocalMode && (!supabaseUrl || !supabaseAnonKey)) {
   console.warn(
