@@ -305,7 +305,7 @@ export function registerVrmRegistryTools(
     {
       title: 'Resolve Default VRM (Player)',
       description:
-        'Resolve the effective default VRM. Priority: registry default → configured fallback path → none. Only callable from the app UI.',
+        'Resolve the effective default VRM. Priority: last active model → registry default → configured fallback path → none. Only callable from the app UI.',
       _meta: {
         ui: { resourceUri: playerResourceUri, visibility: ['app'] },
       },
@@ -313,6 +313,29 @@ export function registerVrmRegistryTools(
     async (_args: Record<string, never>, extra: ToolHandlerExtra): Promise<CallToolResult> => {
       try {
         const userId = resolveUserId(extra)
+        const settings = shared.playerSettings.applyDefaults({}, userId)
+        const activeModelId = shared.playerSettings.get(userId).activeModelId
+        if (activeModelId) {
+          const activeModel = registry.getVisible(activeModelId, {
+            userId,
+            usePublicVrms: settings.usePublicVrms,
+          })
+          if (activeModel) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    source: 'active',
+                    metadata: toMetadataPayload(activeModel, userId),
+                    vrmUrl: getVrmModelUrl(config, activeModel.id, { userId }),
+                    vrmMimeType: 'model/gltf-binary',
+                  }),
+                },
+              ],
+            }
+          }
+        }
         const defaultModel = registry.getDefault(userId)
         if (defaultModel) {
           return {

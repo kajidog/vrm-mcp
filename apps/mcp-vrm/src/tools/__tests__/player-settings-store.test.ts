@@ -29,7 +29,7 @@ describe('PlayerSettingsStore', () => {
   it('設定はユーザーごとに保存される', async () => {
     const store = createStore()
 
-    store.set({ speedScale: 1.2, usePublicVrms: false }, 'user-a')
+    store.set({ speedScale: 1.2, usePublicVrms: false, activeModelId: 'model-a' }, 'user-a')
     store.set({ autoPlay: false }, 'user-b')
 
     expect(store.applyDefaults({}, 'user-a')).toMatchObject({
@@ -46,6 +46,7 @@ describe('PlayerSettingsStore', () => {
     await store.flush()
     const reloaded = createStore()
     expect(reloaded.applyDefaults({}, 'user-a').usePublicVrms).toBe(false)
+    expect(reloaded.get('user-a').activeModelId).toBe('model-a')
     expect(reloaded.applyDefaults({}, 'user-b').autoPlay).toBe(false)
   })
 })

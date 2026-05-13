@@ -12,6 +12,7 @@ export interface PlayerSettingsOverrides {
   postPhonemeLength?: number
   autoPlay?: boolean
   usePublicVrms?: boolean
+  activeModelId?: string
 }
 
 export interface PlayerSettingsPatch {
@@ -20,6 +21,7 @@ export interface PlayerSettingsPatch {
   postPhonemeLength?: number | null
   autoPlay?: boolean | null
   usePublicVrms?: boolean | null
+  activeModelId?: string | null
 }
 
 export interface PlayerCliDefaults {
@@ -170,6 +172,14 @@ function applyPatch(current: PlayerSettingsOverrides, patch: PlayerSettingsPatch
       next.usePublicVrms = value
     }
   }
+  if ('activeModelId' in patch) {
+    const value = patch.activeModelId
+    if (value === null || value === undefined || !value.trim()) {
+      next.activeModelId = undefined
+    } else {
+      next.activeModelId = value
+    }
+  }
   return next
 }
 
@@ -181,5 +191,6 @@ function normalizeOverrides(input: PlayerSettingsOverrides): PlayerSettingsOverr
   }
   if (typeof input.autoPlay === 'boolean') result.autoPlay = input.autoPlay
   if (typeof input.usePublicVrms === 'boolean') result.usePublicVrms = input.usePublicVrms
+  if (typeof input.activeModelId === 'string' && input.activeModelId.trim()) result.activeModelId = input.activeModelId
   return result
 }

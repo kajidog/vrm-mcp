@@ -5,7 +5,13 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { type Context, Hono, type Next } from 'hono'
 import { cors } from 'hono/cors'
 
-import { type AuthVariables, type OAuthConfig, bearerAuth, createProtectedResourceMetadata } from './auth/index.js'
+import {
+  type AuthInfo,
+  type AuthVariables,
+  type OAuthConfig,
+  bearerAuth,
+  createProtectedResourceMetadata,
+} from './auth/index.js'
 import type { BaseServerConfig } from './config.js'
 import { deleteSessionConfig } from './session.js'
 
@@ -33,7 +39,7 @@ export interface CreateHttpAppOptions {
   /** 追加のCORSヘッダー（例: 'X-TTS-Speaker'） */
   extraCorsHeaders?: string[]
   /** セッション初期化時のコールバック（ヘッダーからの設定読み取り等に使用） */
-  onSessionInitialized?: (sessionId: string, request: Request) => void
+  onSessionInitialized?: (sessionId: string, request: Request, authInfo?: AuthInfo) => void
   /** セッション終了時のコールバック */
   onSessionClosed?: (sessionId: string) => void
   /** MCP 以外のHTTPルートを追加するための拡張フック */
@@ -226,7 +232,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono<{ Variables: 
               transports.set(newSessionId, transport)
 
               // アプリ固有の初期化処理
-              onSessionInitialized?.(newSessionId, rawRequest)
+              onSessionInitialized?.(newSessionId, rawRequest, authInfo)
             },
           })
 

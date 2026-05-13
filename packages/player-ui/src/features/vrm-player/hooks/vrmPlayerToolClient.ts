@@ -27,6 +27,7 @@ function assertNoToolError(result: { isError?: boolean; content?: unknown }): vo
  * サーバ側の `_resolve_default_vrm_for_player` を叩き、デフォルト VRM を取得する。
  *
  * 戻り値:
+ *   { source: 'active',   metadata, vrmUrl, vrmMimeType }
  *   { source: 'registry', metadata, vrmUrl, vrmMimeType }
  *   { source: 'config',   vrmBase64, vrmMimeType, sourcePath }
  *   { source: 'none' }
@@ -51,7 +52,7 @@ export async function fetchDefaultVrmOnServer(app: App): Promise<DefaultVrmResol
   if (!payload) return null
 
   const parsed = JSON.parse(payload) as {
-    source?: 'registry' | 'config' | 'none'
+    source?: 'active' | 'registry' | 'config' | 'none'
     metadata?: VrmListEntry
     vrmUrl?: string
     vrmBase64?: string
@@ -268,6 +269,7 @@ export interface PlayerSettings {
   postPhonemeLength?: number
   autoPlay?: boolean
   usePublicVrms?: boolean
+  activeModelId?: string
 }
 
 export interface PlayerSettingsResponse {

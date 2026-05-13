@@ -85,6 +85,11 @@ export class SakuraAiEngine implements TtsEngine {
       defaultHeaders: {
         Authorization: `Bearer ${options.apiKey}`,
       },
+      retry: {
+        maxRetries: 3,
+        baseDelayMs: 1000,
+        retryStatuses: [429],
+      },
     })
   }
 

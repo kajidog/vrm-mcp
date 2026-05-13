@@ -55,6 +55,7 @@ export function registerPlayerSettingsTools(context: PlayerUIToolContext): void 
         postPhonemeLength: z.number().nullable().optional(),
         autoPlay: z.boolean().nullable().optional(),
         usePublicVrms: z.boolean().nullable().optional(),
+        activeModelId: z.string().nullable().optional(),
         reset: z.boolean().optional(),
       },
       _meta: {
@@ -68,6 +69,7 @@ export function registerPlayerSettingsTools(context: PlayerUIToolContext): void 
         postPhonemeLength?: number | null
         autoPlay?: boolean | null
         usePublicVrms?: boolean | null
+        activeModelId?: string | null
         reset?: boolean
       },
       extra: ToolHandlerExtra
@@ -83,6 +85,7 @@ export function registerPlayerSettingsTools(context: PlayerUIToolContext): void 
                 postPhonemeLength: input.postPhonemeLength,
                 autoPlay: input.autoPlay,
                 usePublicVrms: input.usePublicVrms,
+                activeModelId: input.activeModelId,
               },
               userId
             )

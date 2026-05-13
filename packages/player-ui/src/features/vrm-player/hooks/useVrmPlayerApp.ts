@@ -37,6 +37,7 @@ import {
   fetchSpeakerIconOnServer,
   fetchVrmModelOnServer,
   resynthesizeSegmentOnServer,
+  setPlayerSettingsOnServer,
 } from './vrmPlayerToolClient'
 
 // `connecting` を除く「落ち着いた」表示状態。payload が空だった時の表示維持に使う。
@@ -135,6 +136,14 @@ export function useVrmPlayerApp(): VrmPlayerState {
       console.warn('[updateSpeakerIcon] speaker icon fetch failed:', error)
       if (requestId === speakerIconRequestRef.current) setSpeakerIconUrl(undefined)
     }
+  }
+
+  const rememberActiveModel = (modelId: string): void => {
+    const currentApp = appRef.current
+    if (!currentApp) return
+    void setPlayerSettingsOnServer(currentApp, { activeModelId: modelId }).catch((error) => {
+      console.warn('[rememberActiveModel] failed to persist active model:', error)
+    })
   }
 
   useEffect(() => {
@@ -260,6 +269,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
         return
       }
       setResolvedSource({ ...nextSource, label: metadata.name })
+      rememberActiveModel(metadata.id)
       setErrorMsg('')
       return
     }
@@ -589,6 +599,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
       // 表示中ラベルを「登録名」で上書き（vrmUrl だと UUID しか出ないため）。
       setResolvedSource({ ...nextSource, label: metadata.name, note: 'モデルを切替えました' })
+      rememberActiveModel(metadata.id)
       setResolvedActiveModel({
         id: metadata.id,
         name: metadata.name,
