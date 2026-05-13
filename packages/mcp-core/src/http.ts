@@ -308,6 +308,7 @@ export function createHttpApp(options: CreateHttpAppOptions): Hono<{ Variables: 
   app.use('/mcp', validateHost(config))
   if (authConfig) {
     app.get('/.well-known/oauth-protected-resource', (c) => c.json(createProtectedResourceMetadata(authConfig)))
+    app.get('/.well-known/oauth-protected-resource/mcp', (c) => c.json(createProtectedResourceMetadata(authConfig)))
     for (const route of authProtectedRoutes) {
       app.use(route, bearerAuth(authConfig, authRequiredScopes[route] ?? []))
     }

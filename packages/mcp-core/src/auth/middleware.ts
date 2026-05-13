@@ -1,8 +1,27 @@
 import type { Context, MiddlewareHandler } from 'hono'
-import { type OAuthConfig, verifyAccessToken } from './index.js'
+import type { OAuthConfig } from './config.js'
+import { getProtectedResourceMetadataUrl } from './metadata.js'
+import { verifyAccessToken } from './tokenVerifier.js'
 
 export interface AuthVariables {
   auth?: Awaited<ReturnType<typeof verifyAccessToken>>
+}
+
+function quoteAuthParam(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+function createAuthenticateHeader(config: OAuthConfig, params: Record<string, string> = {}): string {
+  const metadataUrl = getProtectedResourceMetadataUrl(config)
+  const authParams = {
+    realm: config.resourceName,
+    resource_metadata: metadataUrl,
+    ...params,
+  }
+
+  return `Bearer ${Object.entries(authParams)
+    .map(([key, value]) => `${key}=${quoteAuthParam(value)}`)
+    .join(', ')}`
 }
 
 /**
@@ -17,7 +36,7 @@ export function bearerAuth(config: OAuthConfig, requiredScopes: string[] = []): 
     const authHeader = c.req.header('Authorization')
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      c.header('WWW-Authenticate', `Bearer realm="${config.resourceName}"`)
+      c.header('WWW-Authenticate', createAuthenticateHeader(config))
       return c.text('Unauthorized', 401)
     }
 
@@ -30,7 +49,7 @@ export function bearerAuth(config: OAuthConfig, requiredScopes: string[] = []): 
       await next()
     } catch (error) {
       console.error('Token verification failed:', error)
-      c.header('WWW-Authenticate', `Bearer realm="${config.resourceName}", error="invalid_token"`)
+      c.header('WWW-Authenticate', createAuthenticateHeader(config, { error: 'invalid_token' }))
       return c.text('Unauthorized', 401)
     }
   }

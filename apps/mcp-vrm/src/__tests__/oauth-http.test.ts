@@ -26,6 +26,9 @@ const authConfig: OAuthConfig = {
   resourceName: 'VRM MCP Server',
 }
 
+const expectedWwwAuthenticate =
+  'Bearer realm="VRM MCP Server", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+
 function createApp(options: Partial<Parameters<typeof createHttpApp>[0]> = {}) {
   return createHttpApp({
     server: {} as Parameters<typeof createHttpApp>[0]['server'],
@@ -65,7 +68,7 @@ describe('OAuth HTTP auth', () => {
     })
 
     expect(response.status).toBe(401)
-    expect(response.headers.get('WWW-Authenticate')).toBe('Bearer realm="VRM MCP Server"')
+    expect(response.headers.get('WWW-Authenticate')).toBe(expectedWwwAuthenticate)
     await expect(response.text()).resolves.toBe('Unauthorized')
   })
 
@@ -100,7 +103,7 @@ describe('OAuth HTTP auth', () => {
     })
 
     expect(response.status).toBe(401)
-    expect(response.headers.get('WWW-Authenticate')).toBe('Bearer realm="VRM MCP Server"')
+    expect(response.headers.get('WWW-Authenticate')).toBe(expectedWwwAuthenticate)
   })
 
   it('OAuth 有効時は MCP_API_KEY 相当の API キーでは /mcp を通さない', async () => {
@@ -121,7 +124,7 @@ describe('OAuth HTTP auth', () => {
     })
 
     expect(response.status).toBe(401)
-    expect(response.headers.get('WWW-Authenticate')).toBe('Bearer realm="VRM MCP Server"')
+    expect(response.headers.get('WWW-Authenticate')).toBe(expectedWwwAuthenticate)
     await expect(response.text()).resolves.toBe('Unauthorized')
   })
 
@@ -137,10 +140,27 @@ describe('OAuth HTTP auth', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
-      resource: 'http://localhost:3000',
+      resource: 'http://localhost:3000/mcp',
       authorization_servers: ['http://localhost:3001'],
       jwks_uri: 'http://localhost:3001/.well-known/jwks.json',
       scopes_supported: ['openid', 'email', 'profile'],
+    })
+  })
+
+  it('path-specific protected resource metadata も認証不要で返る', async () => {
+    const app = createApp({
+      authConfig,
+      authProtectedRoutes: ['/mcp'],
+    })
+
+    const response = await app.request('/.well-known/oauth-protected-resource/mcp', {
+      headers: { Host: 'localhost' },
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      resource: 'http://localhost:3000/mcp',
+      authorization_servers: ['http://localhost:3001'],
     })
   })
 })

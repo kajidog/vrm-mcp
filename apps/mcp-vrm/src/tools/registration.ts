@@ -26,6 +26,19 @@ function isToolDisabled(disabledTools: Set<string>, name: string): boolean {
   return disabledTools.has(name) || disabledTools.has(fullName)
 }
 
+function withDefaultAnnotations(config: any): any {
+  if (!config || typeof config !== 'object') return config
+
+  return {
+    ...config,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      ...config.annotations,
+    },
+  }
+}
+
 /**
  * Register a tool with auto-prefixed name (disabled tools are skipped).
  *
@@ -43,7 +56,7 @@ export function registerToolIfEnabled(
     console.error(`Tool "${fullName}" is disabled via configuration`)
     return
   }
-  server.registerTool(fullName, ...args)
+  server.registerTool(fullName, withDefaultAnnotations(args[0]), args[1])
 }
 
 export function registerAppToolIfEnabled(
@@ -57,5 +70,5 @@ export function registerAppToolIfEnabled(
     console.error(`Tool "${fullName}" is disabled via configuration`)
     return
   }
-  registerAppTool(server, fullName, ...args)
+  registerAppTool(server, fullName, withDefaultAnnotations(args[0]), args[1])
 }
