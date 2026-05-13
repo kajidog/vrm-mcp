@@ -25,7 +25,7 @@ MCP_JWKS_URI=http://localhost:3001/.well-known/jwks.json \
 MCP_ISSUER=http://localhost:3001 \
 MCP_OAUTH_AUDIENCE=http://localhost:3000 \
 MCP_RESOURCE_NAME="VRM MCP Server" \
-pnpm --filter @kajidog/vrm-mcp dev
+pnpm --filter @kajidog/mcp-vrm-player dev
 ```
 
 `apps/web-auth` をローカルモードで使う場合は、`apps/web-auth/.env` を次のように設定します。
@@ -113,7 +113,7 @@ MCP_JWKS_URI=https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json \
 MCP_ISSUER=https://<project-ref>.supabase.co/auth/v1 \
 MCP_OAUTH_AUDIENCE=authenticated \
 MCP_RESOURCE_NAME="VRM MCP Server" \
-pnpm --filter @kajidog/vrm-mcp start:http
+pnpm --filter @kajidog/mcp-vrm-player start:http
 ```
 
 `MCP_ISSUER` は指定した場合だけ JWT の `iss` を検証します。Supabase プロジェクトの実際の issuer と一致しない場合は 401 になります。

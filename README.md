@@ -1,41 +1,25 @@
-# vrm-mcp
+# mcp-vrm-player
 
 開発中
 
-`vrm-mcp` は、ChatGPT や Claude などの MCP 対応チャット上で、好きなVRMモデルを表示しながら会話できるサーバーです。VOICEVOX / さくらのAI Engine を使った音声合成と、リップシンク・表情・ポーズを組み合わせた再生に対応しています。
+`mcp-vrm-player` は、ChatGPT / Claude などの MCP Apps 対応チャット上で 3D VRM モデルを表示しながら会話できる MCP サーバーです。音声合成・リップシンク・表情・ポーズ・視線をまとめて制御します。
 
 ## 主な機能
 
-ChatGPT / Claude など MCP Apps 対応チャットクライアントの会話画面内で 3D VRM プレイヤーを表示します。モデル登録・ポーズ管理・設定も同じ画面内の UI から行います。
+- チャット内 3D VRM プレイヤー（VRM 1.0 / 0.x、Inline ↔ Fullscreen 切替）
+- 母音タイミング駆動のリップシンク（mora 非対応エンジンは音量解析にフォールバック）
+- 表情・ポーズ・視線・速度をセグメント単位で制御し、感情ごとに VRM 表情・話者をバインド
+- 自動瞬き、ポーズのクロスフェード、Spring Bone の初期姿勢リセット
+- TTS バックエンド: **VOICEVOX** / **さくらの AI Engine** / **AivisSpeech**
+- チャット内 UI で VRM モデル・ポーズ・話者プレビュー（ポートレート / テスト発話）を管理
+- マルチユーザー（OAuth JWT Bearer: Supabase / 任意の JWKS / ローカル開発用認証サーバー）
+- ディスクキャッシュ + in-flight 重複排除、`speak_player` は先頭セグメントだけ先行合成
 
-### プレイヤー
-- 母音タイミング（mora）駆動のリップシンク。mora 非対応エンジンは AnalyserNode の RMS にフォールバック
-- 自動瞬き、lookAt（セグメントごとのカメラ目線 / 視線外し）、Spring Bone の初期姿勢リセット
-- ポーズのクロスフェード遷移
-- VRM 1.0 / VRM 0.x のロード
-- Inline / Fullscreen 切替（ホスト側の `requestDisplayMode` を使用）
-- 先頭セグメントを先行合成、残りは UI から要求された時点で合成
+## MCP Apps（スマホからも使えます）
 
-### 発話制御
-- 1 発話を複数セグメントに分け、セグメントごとに `emotion` / `pose` / `gaze` / `speedScale` を指定
-- 感情ごとに VRM 表情名・話者 ID をモデル単位でバインド
-- VOICEVOX ユーザー辞書連携（対応エンジン時のみ）
+[ChatGPT](https://chatgpt.com) / [Claude](https://claude.ai) など MCP Apps 対応のチャットクライアントの会話画面内に、3D VRM プレイヤーがそのまま表示されます。**ネイティブアプリのインストールは不要で、スマートフォンのブラウザからもそのまま使えます** — チャットで VRM を呼び出して話させたり、モデル管理画面でモデル登録・ポーズ追加・話者プレビューを行ったりできます。
 
-### モデル管理（チャット内 UI）
-- VRM の登録 / 編集 / バイナリ差し替え / 削除
-- ビルトインポーズと、ユーザー登録の VRMA
-- 話者プレビュー（テスト発話 / ポートレートアイコン）
-
-### マルチユーザー
-- OAuth JWT Bearer（Supabase / 任意の JWKS / ローカル開発用認証サーバー）
-- VRM・ポーズ・プレイヤー設定をユーザーごとに分離
-- 公開 VRM 共有のオプトイン
-
-### TTS エンジン
-- VOICEVOX / さくらの AI Engine
-- ディスクキャッシュと in-flight 重複排除
-
-> 補足: `speak_player` / `open_model_manager` は MCP Apps UI を開けるクライアントで利用します。
+`speak_player` / `open_model_manager` は MCP Apps UI を開けるクライアントから利用してください。
 
 ## クイックスタート
 
@@ -74,13 +58,13 @@ docker compose -f compose.yaml -f compose.supabase.yaml up --build
 - 認証つき起動時の Auth UI: `http://localhost:5173`
 - ローカル認証つき起動時の開発用 Auth Server: `http://localhost:3001`
 
-既定ではホスト側の VOICEVOX Engine を `http://host.docker.internal:50021` として参照します。別の URL を使う場合は `.env` かコマンドラインで `TTS_BASE_URL` を指定してください。
+既定ではホスト側の VOICEVOX Engine を `http://host.docker.internal:50021` として参照します。別の URL や AivisSpeech (既定 `http://localhost:10101`) を使う場合は `.env` かコマンドラインで `TTS_ENGINE` と `TTS_BASE_URL` を指定してください。
 
 ```bash
-TTS_BASE_URL=http://192.168.1.50:50021 docker compose up --build
+TTS_ENGINE=aivisspeech TTS_BASE_URL=http://host.docker.internal:10101 docker compose up --build
 ```
 
-## MCPツール一覧
+## MCP ツール一覧
 
 - `vrm_start_here`
 - `vrm_find_models`
@@ -90,14 +74,16 @@ TTS_BASE_URL=http://192.168.1.50:50021 docker compose up --build
 
 ## 主要設定
 
-- `--engine` / `TTS_ENGINE`: `voicevox` または `sakuraai`
-- `--base-url` / `TTS_BASE_URL`: TTSエンジンURL
-- `--speaker` / `TTS_DEFAULT_SPEAKER`: デフォルト話者ID
+- `--engine` / `TTS_ENGINE`: `voicevox` / `sakuraai` / `aivisspeech`
+- `--base-url` / `TTS_BASE_URL`: TTS エンジン URL（既定: VOICEVOX `http://localhost:50021`、AivisSpeech `http://localhost:10101`、さくらの AI `https://api.ai.sakura.ad.jp`）
+- `--speaker` / `TTS_DEFAULT_SPEAKER`: デフォルト話者 ID
 - `--disable-tools` / `TTS_DISABLED_TOOLS`: 無効化するツール名
 - `--disable-groups` / `TTS_DISABLED_GROUPS`: 無効化グループ（`player`, `dictionary`, `file`, `apps`）
-- `--auto-play` / `TTS_AUTO_PLAY`: UIプレイヤー自動再生
+- `--auto-play` / `TTS_AUTO_PLAY`: UI プレイヤー自動再生
 
-`--init` で `.voicevoxrc.json` テンプレートを生成できます。
+`--init` で `.ttsrc.json` テンプレートを生成できます。
+
+> **AivisSpeech 利用時の注意**: VOICEVOX 互換 API ですが `audio_query` の mora 長 (`consonant_length` / `vowel_length` / `pitch`) が常に 0 で返ります。`mcp-vrm-player` は `aivisspeech` エンジンを選択すると音素タイミング駆動のリップシンクを自動的に無効化し、AnalyserNode の音量解析によるリップシンクにフォールバックします。
 
 ## OAuth 認証
 

@@ -66,7 +66,7 @@ async function startMCPServer(): Promise<void> {
   // バージョンオプションの確認
   if (process.argv.includes('--version') || process.argv.includes('-v')) {
     const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'))
-    console.log(`@kajidog/vrm-mcp v${pkg.version}`)
+    console.log(`@kajidog/mcp-vrm-player v${pkg.version}`)
     process.exit(0)
   }
 
@@ -89,7 +89,7 @@ async function startMCPServer(): Promise<void> {
 
   if (serverConfig.isHttpMode) {
     console.error(
-      `VRM MCP HTTP mode: host=${serverConfig.host} port=${serverConfig.port} env=${
+      `mcp-vrm-player HTTP mode: host=${serverConfig.host} port=${serverConfig.port} env=${
         serverConfig.isDevelopment ? 'development' : 'production'
       }`
     )

@@ -17,8 +17,11 @@ const DEFAULT_TEST_TEXT = 'こんにちは、これはテスト音声です。'
  */
 export function registerTestSpeakTools(context: PlayerUIToolContext): void {
   const { deps, shared } = context
-  const { server, disabledTools } = deps
+  const { server, disabledTools, capabilities } = deps
   const { playerResourceUri, synthesizeWithCache, getSessionState } = shared
+  // mora.consonant_length / vowel_length / pitch がエンジンから返らない場合
+  // (例: AivisSpeech) は audioQuery を UI に渡さず、リップシンクを RMS フォールバックに任せる。
+  const exposeAudioQueryToUi = capabilities.moraData
 
   registerAppToolIfEnabled(
     server,
@@ -153,7 +156,7 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
                 index,
                 audioBase64: result.audioBase64,
                 speedScale: result.speedScale,
-                audioQuery: result.audioQuery,
+                ...(exposeAudioQueryToUi ? { audioQuery: result.audioQuery } : {}),
                 prePhonemeLength: result.prePhonemeLength,
                 postPhonemeLength: result.postPhonemeLength,
               }
@@ -240,7 +243,7 @@ export function registerTestSpeakTools(context: PlayerUIToolContext): void {
                 speakerId,
                 speakerName: result.speakerName,
                 speedScale: result.speedScale,
-                audioQuery: result.audioQuery,
+                ...(exposeAudioQueryToUi ? { audioQuery: result.audioQuery } : {}),
                 prePhonemeLength: result.prePhonemeLength,
                 postPhonemeLength: result.postPhonemeLength,
               }),

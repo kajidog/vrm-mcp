@@ -14,7 +14,7 @@ const config = getConfig()
  */
 export function createServer(): McpServer {
   const server = new McpServer({
-    name: 'vrm-mcp',
+    name: 'mcp-vrm-player',
     version: '0.1.0',
   })
 
