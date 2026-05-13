@@ -27,7 +27,7 @@ interface VrmRegisterViewProps {
   app: App
   modelId: string | null
   onBack: () => void
-  onSaved: () => void
+  onSaved: (modelId?: string) => void
   fullscreen?: boolean
   canFullscreen?: boolean
   onToggleFullscreen?: () => void
@@ -193,12 +193,18 @@ export function VrmRegisterView({
         const parsed = parseToolJson<{
           metadata: VrmMetadata
           vrmUrl?: string
+          vrmBase64?: string
           vrmMimeType?: string
         }>(result)
-        if (!parsed.vrmUrl) {
-          throw new Error('VRM URL が返りませんでした。HTTP mode で起動しているか確認してください。')
+        if (parsed.vrmBase64) {
+          setExistingVrmUrl(`data:${parsed.vrmMimeType ?? 'model/gltf-binary'};base64,${parsed.vrmBase64}`)
+          return
         }
-        setExistingVrmUrl(parsed.vrmUrl)
+        if (parsed.vrmUrl) {
+          setExistingVrmUrl(parsed.vrmUrl)
+          return
+        }
+        throw new Error('VRM データが返りませんでした。')
       })
       .catch((e: unknown) => {
         if (cancelled) return
@@ -266,6 +272,7 @@ export function VrmRegisterView({
     }
     setSaving(true)
     try {
+      let savedModelId: string | undefined
       const persistedPoses = stripAttachmentKeys(form.poses)
       const persistedEmotionBindings = form.emotionBindings.map((binding) => ({
         emotion: binding.emotion,
@@ -274,7 +281,7 @@ export function VrmRegisterView({
         ...(binding.weight !== undefined ? { weight: binding.weight } : {}),
       }))
       if (isEdit && modelId) {
-        await update(modelId, {
+        const updated = await update(modelId, {
           name: form.name.trim(),
           speakerId: form.speakerId,
           isDefault: form.isDefault,
@@ -282,13 +289,15 @@ export function VrmRegisterView({
           poses: persistedPoses,
           emotionBindings: persistedEmotionBindings,
         })
+        savedModelId = updated.id
         if (vrmBuffer) {
-          await replaceBinary(modelId, {
+          const replaced = await replaceBinary(modelId, {
             vrmBase64: arrayBufferToBase64(vrmBuffer),
           })
+          savedModelId = replaced.id
         }
       } else if (vrmBuffer) {
-        await register({
+        const created = await register({
           name: form.name.trim(),
           speakerId: form.speakerId,
           isDefault: form.isDefault,
@@ -297,8 +306,9 @@ export function VrmRegisterView({
           emotionBindings: persistedEmotionBindings,
           vrmBase64: arrayBufferToBase64(vrmBuffer),
         })
+        savedModelId = created.id
       }
-      onSaved()
+      onSaved(savedModelId)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e))
     } finally {

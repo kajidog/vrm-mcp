@@ -27,11 +27,11 @@ function assertNoToolError(result: { isError?: boolean; content?: unknown }): vo
  * サーバ側の `_resolve_default_vrm_for_player` を叩き、デフォルト VRM を取得する。
  *
  * 戻り値:
- *   { source: 'registry', metadata, vrmBase64, vrmMimeType }
+ *   { source: 'registry', metadata, vrmUrl, vrmMimeType }
  *   { source: 'config',   vrmBase64, vrmMimeType, sourcePath }
  *   { source: 'none' }
  *
- * `source: 'none'` または vrmBase64 が無い場合は null を返し、UI は空表示にする。
+ * `source: 'none'` または VRM ペイロードが無い場合は null を返し、UI は空表示にする。
  * registry 経由のデフォルトでは metadata（speakerId 等）も合わせて返し、
  * 呼び出し側で active model 表示や話者アイコンに利用できるようにする。
  */
@@ -202,11 +202,11 @@ export async function fetchVrmListOnServer(app: App): Promise<VrmListEntry[]> {
   }
 }
 
-/** 指定モデルの VRM URL を取得する。 */
+/** 指定モデルの VRM データを取得する。 */
 export async function fetchVrmModelOnServer(
   app: App,
   modelId: string
-): Promise<{ metadata: VrmListEntry; vrmUrl: string }> {
+): Promise<{ metadata: VrmListEntry; payload: VrmPayload }> {
   const result = await app.callServerTool({
     name: '_get_vrm_for_player',
     arguments: { modelId },
@@ -215,9 +215,21 @@ export async function fetchVrmModelOnServer(
 
   const payload = getTextPayload(result.content)
   if (!payload) throw new Error('Tool returned no text content')
-  const parsed = JSON.parse(payload) as { metadata?: VrmListEntry; vrmUrl?: string }
-  if (!parsed.metadata || !parsed.vrmUrl) throw new Error('Invalid VRM metadata response')
-  return { metadata: parsed.metadata, vrmUrl: parsed.vrmUrl }
+  const parsed = JSON.parse(payload) as {
+    metadata?: VrmListEntry
+    vrmUrl?: string
+    vrmBase64?: string
+    vrmMimeType?: string
+  }
+  if (!parsed.metadata || (!parsed.vrmUrl && !parsed.vrmBase64)) throw new Error('Invalid VRM metadata response')
+  return {
+    metadata: parsed.metadata,
+    payload: {
+      vrmUrl: parsed.vrmUrl,
+      vrmBase64: parsed.vrmBase64,
+      vrmMimeType: parsed.vrmMimeType ?? 'model/gltf-binary',
+    },
+  }
 }
 
 export async function fetchSpeakerIconOnServer(app: App, speakerId: number): Promise<string | undefined> {

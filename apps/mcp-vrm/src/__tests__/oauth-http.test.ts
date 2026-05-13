@@ -152,7 +152,7 @@ describe('VRM OAuth HTTP options', () => {
     )
   })
 
-  it('/mcp, /vrms/:fileName, /poses/:fileName を保護対象として渡す', () => {
+  it('/mcp を保護対象として渡す', () => {
     expect(createVrmOAuthHttpOptions(authConfig)).toEqual({
       authConfig,
       authProtectedRoutes: [...VRM_AUTH_PROTECTED_ROUTES],

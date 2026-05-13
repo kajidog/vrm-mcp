@@ -105,10 +105,11 @@ export function McpApp() {
           app={player.app}
           modelId={view === 'edit' ? editingModelId : null}
           onBack={() => setView('player')}
-          onSaved={() => {
+          onSaved={(savedModelId) => {
             setEditingModelId(null)
             setListRefreshKey((value) => value + 1)
             setView('player')
+            if (savedModelId) void player.switchVrm(savedModelId)
           }}
           fullscreen={fullscreen}
           canFullscreen={displayMode.canFullscreen}

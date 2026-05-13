@@ -32,13 +32,17 @@ export function builtinPoseMetadata(): PoseMetadata[] {
   }))
 }
 
-export function toPoseMetadata(config: PlayerUIToolContext['deps']['config'], pose: PoseResource): PoseMetadata {
+export function toPoseMetadata(
+  config: PlayerUIToolContext['deps']['config'],
+  pose: PoseResource,
+  userId?: string
+): PoseMetadata {
   return {
     id: pose.id,
     name: pose.name,
     loop: pose.loop,
     sizeBytes: pose.vrmaSizeBytes,
-    vrmaUrl: getPoseVrmaUrl(config, pose.id),
+    vrmaUrl: getPoseVrmaUrl(config, pose.id, { userId }),
     createdAt: pose.createdAt,
     updatedAt: pose.updatedAt,
   }
@@ -72,7 +76,7 @@ export function registerPoseRegistryTools(
         const userId = resolveUserId(extra)
         const poses = [
           ...builtinPoseMetadata(),
-          ...poseRegistry.listOwned(userId).map((pose) => toPoseMetadata(config, pose)),
+          ...poseRegistry.listOwned(userId).map((pose) => toPoseMetadata(config, pose, userId)),
         ]
         return { content: [{ type: 'text', text: JSON.stringify({ poses }) }] }
       } catch (error) {
@@ -104,7 +108,7 @@ export function registerPoseRegistryTools(
         const settings = shared.playerSettings.applyDefaults({}, userId)
         const pose = getReadablePose(poseRegistry, vrmRegistry, poseId, userId, settings.usePublicVrms)
         if (!pose) throw new Error(`Pose not found: ${poseId}`)
-        return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose) }) }] }
+        return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose, userId) }) }] }
       } catch (error) {
         return createErrorResponse(error)
       }
@@ -133,7 +137,7 @@ export function registerPoseRegistryTools(
       try {
         const userId = resolveUserId(extra)
         const pose = await poseRegistry.register({ ...input, ownerUserId: userId })
-        return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose) }) }] }
+        return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose, userId) }) }] }
       } catch (error) {
         return createErrorResponse(error)
       }
@@ -158,7 +162,7 @@ export function registerPoseRegistryTools(
         const userId = resolveUserId(extra)
         if (isBuiltinPoseResourceId(input.poseId)) throw new Error('Builtin poses cannot be updated')
         const pose = poseRegistry.update(input.poseId, { name: input.name, loop: input.loop }, userId)
-        return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose) }) }] }
+        return { content: [{ type: 'text', text: JSON.stringify({ pose: toPoseMetadata(config, pose, userId) }) }] }
       } catch (error) {
         return createErrorResponse(error)
       }

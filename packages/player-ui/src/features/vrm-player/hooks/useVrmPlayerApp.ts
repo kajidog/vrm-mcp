@@ -150,6 +150,10 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setSource(nextSource)
   }
 
+  const inputHasSegments = (params: { arguments?: Record<string, unknown> }): boolean => {
+    return Array.isArray(params.arguments?.segments)
+  }
+
   // 表示を「空」に確定させる。デフォルト未設定や明示クリア時に使う。
   const clearToEmpty = () => {
     replaceObjectUrl(null)
@@ -233,7 +237,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
     if (!currentApp) return
     setLoadingState('resolvingModel', 25)
     if (modelId) {
-      const { metadata, vrmUrl } = await fetchVrmModelOnServer(currentApp, modelId)
+      const { metadata, payload } = await fetchVrmModelOnServer(currentApp, modelId)
       setResolvedActiveModel({
         id: metadata.id,
         name: metadata.name,
@@ -246,11 +250,7 @@ export function useVrmPlayerApp(): VrmPlayerState {
             : undefined,
       })
       void updateSpeakerIcon(metadata.speakerId)
-      const {
-        source: nextSource,
-        error,
-        revokeUrl,
-      } = await resolveVrmSource(currentApp, { vrmUrl }, { isDefault: false })
+      const { source: nextSource, error, revokeUrl } = await resolveVrmSource(currentApp, payload, { isDefault: false })
       replaceObjectUrl(revokeUrl ?? null)
       setLoadingState('loadingVrm', 45)
       if (error || !nextSource) {
@@ -325,8 +325,9 @@ export function useVrmPlayerApp(): VrmPlayerState {
         setLoadingState('waitingTool', 10)
         try {
           const inputPayload = extractPayloadFromInput(params)
+          const inputModelId = extractModelIdFromInput(params)
           if (inputPayload) await applyPayload(inputPayload, 'waiting')
-          else await applyModelPreview(extractModelIdFromInput(params))
+          else if (inputModelId || inputHasSegments(params)) await applyModelPreview(inputModelId)
           setLoadingState('waitingTool', 20)
         } catch (error) {
           setStatus('error')
@@ -388,6 +389,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
 
           if (payload) {
             await applyPayload(payload, 'ready')
+          } else if (typeof meta.resolvedModelId === 'string' && meta.resolvedModelId.trim()) {
+            await applyModelPreview(meta.resolvedModelId)
           } else if (isPlayerToolResult(result) && !sourceRef.current) {
             throw new Error('VRM データが tool result に含まれておらず、表示中のモデルもありません。')
           }
@@ -572,12 +575,8 @@ export function useVrmPlayerApp(): VrmPlayerState {
     setLoadingModel(true)
     try {
       setLoadingState('resolvingModel', 25)
-      const { metadata, vrmUrl } = await fetchVrmModelOnServer(currentApp, modelId)
-      const {
-        source: nextSource,
-        error,
-        revokeUrl,
-      } = await resolveVrmSource(currentApp, { vrmUrl }, { isDefault: false })
+      const { metadata, payload } = await fetchVrmModelOnServer(currentApp, modelId)
+      const { source: nextSource, error, revokeUrl } = await resolveVrmSource(currentApp, payload, { isDefault: false })
       setLoadingState('loadingVrm', 45)
       replaceObjectUrl(revokeUrl ?? null)
 

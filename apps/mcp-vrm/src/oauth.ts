@@ -1,6 +1,6 @@
 import type { CreateHttpAppOptions, OAuthConfig } from '@kajidog/mcp-core'
 
-export const VRM_AUTH_PROTECTED_ROUTES = ['/mcp', '/vrms/:fileName', '/poses/:fileName'] as const
+export const VRM_AUTH_PROTECTED_ROUTES = ['/mcp'] as const
 
 export function createVrmOAuthHttpOptions(
   authConfig: OAuthConfig | null

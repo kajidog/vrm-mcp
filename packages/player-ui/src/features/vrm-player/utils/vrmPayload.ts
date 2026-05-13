@@ -21,14 +21,12 @@ export function readString(record: Record<string, unknown>, key: string): string
 export function pickVrmPayload(source: unknown): VrmPayload | null {
   if (!isRecord(source)) return null
 
-  // speak_player の新形式は `vrmModel: { vrmUrl }` を入れ子で返す。最優先で拾う。
+  // speak_player の `vrmModel.vrmUrl` は iframe から直接読むと認証が付かない。
+  // URL は app 専用の `_get_vrm_for_player` が返す短命 URL だけを使う。
   const nested = isRecord(source.vrmModel) ? (source.vrmModel as Record<string, unknown>) : null
 
   const payload: VrmPayload = {
-    vrmUrl:
-      (nested ? readString(nested, 'vrmUrl') : undefined) ??
-      readString(source, 'vrmUrl') ??
-      readString(source, 'modelUrl'),
+    vrmUrl: readString(source, 'vrmUrl') ?? readString(source, 'modelUrl'),
     vrmBase64: readString(source, 'vrmBase64') ?? readString(source, 'modelBase64'),
     vrmMimeType:
       (nested ? readString(nested, 'vrmMimeType') : undefined) ??

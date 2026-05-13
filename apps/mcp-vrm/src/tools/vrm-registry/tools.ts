@@ -116,7 +116,7 @@ export function registerVrmRegistryTools(
     '_get_vrm_for_player',
     {
       title: 'Get VRM (Player)',
-      description: 'Get a registered VRM binary as base64. Only callable from the app UI.',
+      description: 'Get a registered VRM download URL. Only callable from the app UI.',
       inputSchema: {
         modelId: z.string().describe('VRM model ID'),
       },
@@ -136,7 +136,7 @@ export function registerVrmRegistryTools(
               type: 'text',
               text: JSON.stringify({
                 metadata: toMetadataPayload(model, userId),
-                vrmUrl: getVrmModelUrl(config, model.id),
+                vrmUrl: getVrmModelUrl(config, model.id, { userId }),
                 vrmMimeType: 'model/gltf-binary',
               }),
             },
@@ -322,7 +322,7 @@ export function registerVrmRegistryTools(
                 text: JSON.stringify({
                   source: 'registry',
                   metadata: toMetadataPayload(defaultModel, userId),
-                  vrmUrl: getVrmModelUrl(config, defaultModel.id),
+                  vrmUrl: getVrmModelUrl(config, defaultModel.id, { userId }),
                   vrmMimeType: 'model/gltf-binary',
                 }),
               },
