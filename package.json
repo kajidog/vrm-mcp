@@ -1,11 +1,12 @@
 {
-  "name": "vrm-mcp",
+  "name": "mcp-vrm-player",
   "version": "0.1.0",
   "private": true,
   "description": "",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r dev:http",
+    "dev:win": "pnpm --filter @kajidog/mcp-vrm-player dev:http:win",
     "lint": "biome ci .",
     "lint:fix": "biome check --write .",
     "typecheck": "pnpm -r typecheck",

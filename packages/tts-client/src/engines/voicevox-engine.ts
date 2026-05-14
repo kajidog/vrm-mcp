@@ -1,7 +1,15 @@
 import { handleError } from '../error.js'
 import type { AccentPhrase, AudioQuery, Speaker, SpeakerInfo, UserDictionaryWord } from '../types.js'
 import { HttpClient } from './http-client.js'
-import type { DictionaryWordInput, DictionaryWordUpdateInput, EngineCapabilities, TtsEngine } from './types.js'
+import type {
+  DictionaryWordInput,
+  DictionaryWordUpdateInput,
+  EngineCapabilities,
+  TtsEngine,
+  TtsEngineId,
+} from './types.js'
+
+export const VOICEVOX_BASE_URL = 'http://localhost:50021'
 
 export const voicevoxCapabilities: EngineCapabilities = {
   audioQuery: true,
@@ -14,12 +22,12 @@ export const voicevoxCapabilities: EngineCapabilities = {
 }
 
 export class VoicevoxEngine implements TtsEngine {
-  public readonly id = 'voicevox'
-  public readonly displayName = 'VOICEVOX'
-  public readonly capabilities = voicevoxCapabilities
-  private readonly http: HttpClient
+  public readonly id: TtsEngineId = 'voicevox'
+  public readonly displayName: string = 'VOICEVOX'
+  public readonly capabilities: EngineCapabilities = voicevoxCapabilities
+  protected readonly http: HttpClient
 
-  constructor(baseUrl = 'http://localhost:50021') {
+  constructor(baseUrl = VOICEVOX_BASE_URL) {
     this.http = new HttpClient({ baseUrl })
   }
 

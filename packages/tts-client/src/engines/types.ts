@@ -1,6 +1,6 @@
 import type { AccentPhrase, AudioQuery, Speaker, SpeakerInfo, UserDictionaryWord } from '../types.js'
 
-export type TtsEngineId = 'voicevox' | 'sakuraai' | (string & {})
+export type TtsEngineId = 'voicevox' | 'sakuraai' | 'aivisspeech' | (string & {})
 
 export interface EngineCapabilities {
   audioQuery: boolean

@@ -1,5 +1,5 @@
 {
-  "name": "@kajidog/vrm-mcp",
+  "name": "@kajidog/mcp-vrm-player",
   "version": "0.1.0",
   "description": "",
   "main": "./dist/index.js",
@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "vrm-mcp": "./dist/index.js"
+    "mcp-vrm-player": "./dist/index.js"
   },
   "type": "module",
   "scripts": {
@@ -33,7 +33,7 @@
     "prepublishOnly": "pnpm test"
   },
   "files": ["dist", "README.md", "LICENSE"],
-  "keywords": ["mcp", "mcp-server", "mcp-apps", "voicevox"],
+  "keywords": ["mcp", "mcp-server", "mcp-apps", "vrm", "voicevox", "aivisspeech"],
   "author": {
     "name": "kajidog",
     "email": "dev@kajidog.com"

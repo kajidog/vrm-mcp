@@ -24,7 +24,7 @@ const ttsConfigDefs: ConfigDefs = {
   engine: {
     cli: '--engine',
     env: 'TTS_ENGINE',
-    description: 'TTS engine (voicevox | sakuraai)',
+    description: 'TTS engine (voicevox | sakuraai | aivisspeech)',
     group: 'TTS Configuration',
     type: 'string',
     default: 'voicevox',
@@ -376,7 +376,13 @@ export function getConfig(argv?: string[], env?: NodeJS.ProcessEnv): ServerConfi
     merged.playerStateFile = join(merged.playerCacheDir, 'player-state.json')
   }
   if (!merged.baseUrl) {
-    merged.baseUrl = merged.engine === 'sakuraai' ? 'https://api.ai.sakura.ad.jp' : 'http://localhost:50021'
+    if (merged.engine === 'sakuraai') {
+      merged.baseUrl = 'https://api.ai.sakura.ad.jp'
+    } else if (merged.engine === 'aivisspeech') {
+      merged.baseUrl = 'http://localhost:10101'
+    } else {
+      merged.baseUrl = 'http://localhost:50021'
+    }
   }
   if (merged.engine === 'sakuraai' && !merged.engineApiKey) {
     throw new Error('TTS_ENGINE=sakuraai requires TTS_API_KEY or --engine-api-key')
@@ -392,15 +398,16 @@ export function getConfig(argv?: string[], env?: NodeJS.ProcessEnv): ServerConfi
  */
 export function getHelpText(): string {
   return generateHelp(allConfigDefs, {
-    usage: 'npx @kajidog/vrm-mcp [options]',
+    usage: 'npx @kajidog/mcp-vrm-player [options]',
     examples: [
-      'npx @kajidog/vrm-mcp --engine voicevox --base-url http://192.168.1.50:50021 --speaker 3',
-      'TTS_ENGINE=sakuraai TTS_API_KEY=... npx @kajidog/vrm-mcp',
-      'npx @kajidog/vrm-mcp --http --port 8080',
-      'npx @kajidog/vrm-mcp --disable-tools synthesize_file',
-      'npx @kajidog/vrm-mcp --disable-groups player,dictionary',
-      'npx @kajidog/vrm-mcp --config ./my-config.json',
-      'npx @kajidog/vrm-mcp --init',
+      'npx @kajidog/mcp-vrm-player --engine voicevox --base-url http://192.168.1.50:50021 --speaker 3',
+      'npx @kajidog/mcp-vrm-player --engine aivisspeech --base-url http://localhost:10101',
+      'TTS_ENGINE=sakuraai TTS_API_KEY=... npx @kajidog/mcp-vrm-player',
+      'npx @kajidog/mcp-vrm-player --http --port 8080',
+      'npx @kajidog/mcp-vrm-player --disable-tools synthesize_file',
+      'npx @kajidog/mcp-vrm-player --disable-groups player,dictionary',
+      'npx @kajidog/mcp-vrm-player --config ./my-config.json',
+      'npx @kajidog/mcp-vrm-player --init',
     ],
   })
 }

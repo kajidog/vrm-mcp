@@ -451,6 +451,11 @@ describe('config module', () => {
     it('sakuraai で API key 未指定ならエラーにする', () => {
       expect(() => getConfig([], { TTS_ENGINE: 'sakuraai' })).toThrow(/TTS_API_KEY/)
     })
+
+    it('aivisspeech はデフォルトURLとして localhost:10101 を使う', () => {
+      const result = getConfig([], { TTS_ENGINE: 'aivisspeech' })
+      expect(result.baseUrl).toBe('http://localhost:10101')
+    })
   })
 
   describe('parseConfigFile', () => {
@@ -588,7 +593,7 @@ describe('config module', () => {
     it('Examplesが含まれる', () => {
       const help = getHelpText()
       expect(help).toContain('Examples:')
-      expect(help).toContain('npx @kajidog/vrm-mcp')
+      expect(help).toContain('npx @kajidog/mcp-vrm-player')
     })
   })
 

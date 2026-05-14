@@ -24,7 +24,7 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  apps/mcp-vrm:
+  apps/mcp-vrm-player:
     dependencies:
       '@kajidog/tts-client':
         specifier: workspace:*
