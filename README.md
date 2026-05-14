@@ -4,22 +4,24 @@
 
 `mcp-vrm-player` は、ChatGPT / Claude などの MCP Apps 対応チャット上で 3D VRM モデルを表示しながら会話できる MCP サーバーです。音声合成・リップシンク・表情・ポーズ・視線をまとめて制御します。
 
-## 主な機能
+## できること
 
-- チャット内 3D VRM プレイヤー（VRM 1.0 / 0.x、Inline ↔ Fullscreen 切替）
-- 母音タイミング駆動のリップシンク（mora 非対応エンジンは音量解析にフォールバック）
-- 表情・ポーズ・視線・速度をセグメント単位で制御し、感情ごとに VRM 表情・話者をバインド
+- 3D VRM プレイヤー（VRM 1.0 / 0.x、Inline / Fullscreen 切替）
+- 音素タイミング駆動のリップシンク。`aivisspeech` 選択時は音量解析にフォールバック
+- セグメント単位で表情・ポーズ・視線・速度を制御。感情ごとに VRM 表情と話者をバインド
 - 自動瞬き、ポーズのクロスフェード、Spring Bone の初期姿勢リセット
-- TTS バックエンド: **VOICEVOX** / **さくらの AI Engine** / **AivisSpeech**
+- TTS バックエンド: VOICEVOX / さくらの AI Engine / AivisSpeech
 - チャット内 UI で VRM モデル・ポーズ・話者プレビュー（ポートレート / テスト発話）を管理
-- マルチユーザー（OAuth JWT Bearer: Supabase / 任意の JWKS / ローカル開発用認証サーバー）
-- ディスクキャッシュ + in-flight 重複排除、`speak_player` は先頭セグメントだけ先行合成
+- OAuth JWT Bearer 認証（Supabase / 任意の JWKS / ローカル開発用認証サーバー）
+- ディスクキャッシュ + in-flight 重複排除。`vrm_speak_player` は先頭セグメントだけ先行合成
 
-## MCP Apps（スマホからも使えます）
+## MCP Apps
 
-[ChatGPT](https://chatgpt.com) / [Claude](https://claude.ai) など MCP Apps 対応のチャットクライアントの会話画面内に、3D VRM プレイヤーがそのまま表示されます。**ネイティブアプリのインストールは不要で、スマートフォンのブラウザからもそのまま使えます** — チャットで VRM を呼び出して話させたり、モデル管理画面でモデル登録・ポーズ追加・話者プレビューを行ったりできます。
+[ChatGPT](https://chatgpt.com) / [Claude](https://claude.ai) など MCP Apps 対応クライアントの会話画面内に、3D VRM プレイヤーが描画されます。
 
-`speak_player` / `open_model_manager` は MCP Apps UI を開けるクライアントから利用してください。
+- ネイティブアプリのインストールは不要。スマートフォンのブラウザでも動作します
+- チャットから VRM を呼び出して発話させたり、モデル管理画面でモデル登録・ポーズ追加・話者プレビューが行えます
+- `vrm_speak_player` / `vrm_open_model_manager` は MCP Apps UI を開けるクライアントから利用してください
 
 ## クイックスタート
 
@@ -64,15 +66,21 @@ docker compose -f compose.yaml -f compose.supabase.yaml up --build
 TTS_ENGINE=aivisspeech TTS_BASE_URL=http://host.docker.internal:10101 docker compose up --build
 ```
 
-## MCP ツール一覧
+## MCP ツール（AI から呼ぶもの）
 
-- `vrm_start_here`
-- `vrm_find_models`
-- `vrm_speak_player` (App tool)
-- `vrm_open_model_manager` (App tool)
-- `vrm_list_vrms`
+| ツール名 | 主な引数 | 用途 |
+| --- | --- | --- |
+| `vrm_start_here` | （なし） | 最初に呼ぶ。エンジン状態・登録モデル概要・既定モデル・既定ポーズ名・感情名・プレイヤー設定を返す |
+| `vrm_find_models` | `modelId?`, `query?` | 登録モデルと有効なポーズ名を検索。`modelId` / `segments[].pose` を決める前に呼ぶ |
+| `vrm_list_vrms` | （なし） | 登録 VRM 一覧を返す。話者 ID・感情バインド・ポーズ・更新時刻などのメタデータ込み |
+| `vrm_speak_player` (App tool) | `modelId?`, `segments[]` | VRM プレイヤー UI を開き、セグメント単位で発話・表情・ポーズ・視線・速度を再生 |
+| `vrm_open_model_manager` (App tool) | `modelId?`, `knowsHowToUse?` | VRM の登録 / 編集 UI を開く |
 
-## 主要設定
+`segments[]` の要素は `{ text, emotion?, pose?, gaze?, speedScale? }`。`emotion` は `neutral` / `happy` / `angry` / `sad` / `relaxed` / `surprised` / `serious`、`gaze` は `camera`（視線を合わせる） / `away`（そらす） / `front`（正面）。
+
+## 起動オプション
+
+優先順位: CLI 引数 > 環境変数 > `.ttsrc.json` > 既定値。
 
 - `--engine` / `TTS_ENGINE`: `voicevox` / `sakuraai` / `aivisspeech`
 - `--base-url` / `TTS_BASE_URL`: TTS エンジン URL（既定: VOICEVOX `http://localhost:50021`、AivisSpeech `http://localhost:10101`、さくらの AI `https://api.ai.sakura.ad.jp`）
@@ -87,7 +95,7 @@ TTS_ENGINE=aivisspeech TTS_BASE_URL=http://host.docker.internal:10101 docker com
 
 ## OAuth 認証
 
-HTTP モードでは OAuth JWT Bearer 認証を有効化できます。有効時は `/mcp`, `/vrms/:fileName`, `/poses/:fileName` が `Authorization: Bearer <JWT>` 必須になり、`/health` と `/.well-known/oauth-protected-resource` は認証不要です。
+HTTP モードでは OAuth JWT Bearer 認証を有効化できます。
 
 ```bash
 MCP_HTTP_MODE=true
@@ -99,6 +107,24 @@ MCP_OAUTH_AUDIENCE=http://localhost:3000
 MCP_RESOURCE_NAME="VRM MCP Server"
 ```
 
-`MCP_ISSUER` を指定した場合は JWT の `iss` も検証します。`MCP_OAUTH_AUDIENCE` は JWT の `aud` 検証値で、未指定時は `MCP_SERVER_URL` を使います。Supabase OAuth Server を使う場合は通常 `authenticated` を指定します。`MCP_OAUTH_SCOPES` は metadata で公開するスコープで、既定は Supabase 標準の `openid,email,profile` です。OAuth 有効時は `MCP_API_KEY` より OAuth JWT が優先され、`/mcp` では API キー認証を要求しません。
+環境変数:
+
+- `MCP_HTTP_MODE` / `MCP_OAUTH_ENABLED`: HTTP モード + OAuth を有効化
+- `MCP_SERVER_URL`: 公開する MCP サーバー URL
+- `MCP_AUTH_SERVER_URL` / `MCP_JWKS_URI`: 認可サーバーと JWKS の場所
+- `MCP_OAUTH_AUDIENCE`: JWT の `aud` 検証値。未指定時は `MCP_SERVER_URL`
+- `MCP_ISSUER`: 指定時は JWT の `iss` も検証
+- `MCP_OAUTH_SCOPES`: metadata に公開するスコープ。既定は `openid,email,profile`
+- `MCP_RESOURCE_NAME`: protected resource metadata のリソース名
+
+エンドポイントと認証:
+
+- 認証必須: `/mcp`, `/vrms/:fileName`, `/poses/:fileName`
+- 認証不要: `/health`, `/.well-known/oauth-protected-resource`
+
+注記:
+
+- Supabase OAuth Server を使う場合、`MCP_OAUTH_AUDIENCE` には通常 `authenticated` を指定します
+- OAuth 有効時は OAuth JWT が `MCP_API_KEY` より優先され、`/mcp` で API キー認証は要求されません
 
 詳しいローカル開発手順、Supabase 設定、環境変数一覧は [docs/auth-setup.md](docs/auth-setup.md) を参照してください。
